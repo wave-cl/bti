@@ -20,6 +20,9 @@ pub const SEARCH_INDEX: TableDefinition<&[u8], &[u8]> = TableDefinition::new("se
 /// Per-category counts (written by web service).
 pub const CATEGORY_STATS: TableDefinition<u8, u64> = TableDefinition::new("category_stats");
 
+/// Metadata key-value store (watermarks, state).
+pub const META: TableDefinition<&str, &[u8]> = TableDefinition::new("meta");
+
 pub fn open_db(path: &Path) -> Result<Database, Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -160,4 +163,30 @@ pub fn latest_timestamp(rtx: &ReadTransaction) -> Result<u32, Error> {
 pub fn count(rtx: &ReadTransaction) -> Result<u64, Error> {
     let table = rtx.open_table(TORRENTS)?;
     Ok(table.len()?)
+}
+
+/// Get a u32 value from the META table.
+pub fn get_meta_u32(rtx: &ReadTransaction, key: &str) -> Result<u32, Error> {
+    let table = match rtx.open_table(META) {
+        Ok(t) => t,
+        Err(_) => return Ok(0),
+    };
+    match table.get(key)? {
+        Some(v) => {
+            let bytes = v.value();
+            if bytes.len() >= 4 {
+                Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+            } else {
+                Ok(0)
+            }
+        }
+        None => Ok(0),
+    }
+}
+
+/// Set a u32 value in the META table.
+pub fn set_meta_u32(wtx: &WriteTransaction, key: &str, val: u32) -> Result<(), Error> {
+    let mut table = wtx.open_table(META)?;
+    table.insert(key, val.to_be_bytes().as_slice())?;
+    Ok(())
 }

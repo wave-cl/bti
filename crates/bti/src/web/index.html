@@ -8,12 +8,15 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:20px;max-width:900px;margin:0 auto}
 h1{font-size:1.5em;margin-bottom:0;color:#fff}
-.topbar{display:flex;align-items:baseline;gap:16px;margin-bottom:16px}
+.topbar{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
 .topbar .info{font-size:.85em;color:#888}
 .topbar .info b{color:#4fc3f7}
 .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
 .stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em}
 .stat b{display:block;font-size:1.2em;color:#4fc3f7}
+.stat.updated b{animation:pulse .4s ease}
+.info.updated b{animation:pulse .4s ease}
+@keyframes pulse{0%{color:#8ee5ff}100%{color:#4fc3f7}}
 input[type=text]{width:100%;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#fff;font-size:1em;margin-bottom:16px}
 input:focus{outline:none;border-color:#4fc3f7}
 .results{list-style:none}
@@ -31,12 +34,25 @@ input:focus{outline:none;border-color:#4fc3f7}
 <script>
 const $=s=>document.querySelector(s);
 const fmt=n=>{if(n>=1e12)return(n/1e12).toFixed(1)+'TB';if(n>=1e9)return(n/1e9).toFixed(1)+'GB';if(n>=1e6)return(n/1e6).toFixed(1)+'MB';if(n>=1e3)return(n/1e3).toFixed(1)+'KB';return n+'B'};
-fetch('/api/stats').then(r=>r.json()).then(d=>{
-  $('#topinfo').innerHTML=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> db`;
-  let h='';
-  for(const[k,v]of Object.entries(d.categories||{}))if(v>0)h+=`<div class="stat"><b>${v.toLocaleString()}</b>${k}</div>`;
-  $('#stats').innerHTML=h;
-});
+const order=['movie','tv','anime','music','game','software','book','audiobook','course','xxx','other'];
+let prev={};
+function refreshStats(){
+  fetch('/api/stats').then(r=>r.json()).then(d=>{
+    const ti=$('#topinfo');
+    const changed=prev.total!==d.total||prev.db_size!==d.db_size;
+    ti.innerHTML=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> database`;
+    if(changed){ti.classList.remove('updated');void ti.offsetWidth;ti.classList.add('updated')}
+    let h='';
+    for(const k of order){const v=d.categories?.[k];if(v>0){
+      const ch=prev[k]!==v;
+      h+=`<div class="stat${ch?' updated':''}"><b>${v.toLocaleString()}</b>${k}</div>`;
+    }}
+    $('#stats').innerHTML=h;
+    prev={total:d.total,db_size:d.db_size,...d.categories};
+  }).catch(()=>{});
+}
+refreshStats();
+setInterval(refreshStats,5000);
 let t;$('#q').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{
   const q=e.target.value.trim();if(!q){$('#results').innerHTML='';return}
   fetch('/api/search?q='+encodeURIComponent(q)+'&limit=50').then(r=>r.json()).then(d=>{

@@ -1,12 +1,13 @@
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use bti_core::model::Category;
 use regex::Regex;
 
+const NUM_CATEGORIES: usize = 11;
+
 struct Pattern {
     regex: Regex,
-    category: Category,
+    category: usize,
     weight: f64,
 }
 
@@ -15,7 +16,7 @@ fn patterns() -> &'static [Pattern] {
     PATTERNS.get_or_init(|| {
         let p = |pat: &str, cat: Category, w: f64| Pattern {
             regex: Regex::new(&format!("(?i){}", pat)).unwrap(),
-            category: cat,
+            category: cat as usize,
             weight: w,
         };
 
@@ -111,12 +112,13 @@ fn patterns() -> &'static [Pattern] {
     })
 }
 
-pub fn score_keywords(name: &str) -> HashMap<Category, f64> {
-    let mut scores: HashMap<Category, f64> = HashMap::new();
+/// Score a name against all keyword patterns. Returns scores as a fixed array indexed by category.
+pub fn score_keywords(name: &str) -> [f64; NUM_CATEGORIES] {
+    let mut scores = [0.0_f64; NUM_CATEGORIES];
 
     for pattern in patterns() {
         if pattern.regex.is_match(name) {
-            *scores.entry(pattern.category).or_default() += pattern.weight;
+            scores[pattern.category] += pattern.weight;
         }
     }
 
