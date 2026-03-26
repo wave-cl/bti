@@ -236,12 +236,14 @@ struct PieceDict {
 }
 
 fn parse_piece_dict(data: &[u8]) -> Result<(usize, PieceDict), FetchError> {
-    // We need to find where the bencode dict ends in data
-    // The dict looks like: d8:msg_typei1e5:piecei0ee
-    // We parse it manually to find the boundary
+    // Find the exact end of the bencode dict by scanning the raw bytes.
+    // We can't re-encode because key ordering may differ.
+    let dict_end = bencode_end(data)
+        .ok_or_else(|| FetchError::Protocol("malformed piece bencode".into()))?;
 
+    let dict_bytes = &data[..dict_end];
     let val: bt_bencode::Value =
-        bt_bencode::from_slice(data).map_err(|_| FetchError::Protocol("bad piece bencode".into()))?;
+        bt_bencode::from_slice(dict_bytes).map_err(|_| FetchError::Protocol("bad piece bencode".into()))?;
 
     let msg_type = val
         .get("msg_type")
@@ -252,11 +254,72 @@ fn parse_piece_dict(data: &[u8]) -> Result<(usize, PieceDict), FetchError> {
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
 
-    // Re-encode the dict to find its length
-    let re_encoded =
-        bt_bencode::to_vec(&val).map_err(|_| FetchError::Protocol("bencode re-encode failed".into()))?;
+    Ok((dict_end, PieceDict { msg_type, piece }))
+}
 
-    Ok((re_encoded.len(), PieceDict { msg_type, piece }))
+/// Find the byte length of a single bencode value starting at data[0].
+/// Returns the index one past the end of the value.
+fn bencode_end(data: &[u8]) -> Option<usize> {
+    if data.is_empty() {
+        return None;
+    }
+    let mut i = 0;
+    match data[0] {
+        b'd' | b'l' => {
+            // Dict or list: starts with 'd'/'l', contains values, ends with 'e'
+            i += 1;
+            while i < data.len() && data[i] != b'e' {
+                i = bencode_end_at(data, i)?;
+                if data[0] == b'd' {
+                    // Dicts have key-value pairs, so consume the value too
+                    i = bencode_end_at(data, i)?;
+                }
+            }
+            if i < data.len() && data[i] == b'e' {
+                Some(i + 1)
+            } else {
+                None
+            }
+        }
+        b'i' => {
+            // Integer: i<digits>e
+            i += 1;
+            while i < data.len() && data[i] != b'e' {
+                i += 1;
+            }
+            if i < data.len() {
+                Some(i + 1)
+            } else {
+                None
+            }
+        }
+        b'0'..=b'9' => {
+            // String: <length>:<data>
+            bencode_string_end(data, 0)
+        }
+        _ => None,
+    }
+}
+
+fn bencode_end_at(data: &[u8], offset: usize) -> Option<usize> {
+    bencode_end(&data[offset..]).map(|len| offset + len)
+}
+
+fn bencode_string_end(data: &[u8], start: usize) -> Option<usize> {
+    let mut i = start;
+    while i < data.len() && data[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i >= data.len() || data[i] != b':' {
+        return None;
+    }
+    let len_str = std::str::from_utf8(&data[start..i]).ok()?;
+    let len: usize = len_str.parse().ok()?;
+    i += 1; // skip ':'
+    if i + len > data.len() {
+        return None;
+    }
+    Some(i + len)
 }
 
 async fn read_message(stream: &mut TcpStream) -> Result<Vec<u8>, FetchError> {

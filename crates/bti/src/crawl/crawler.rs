@@ -13,7 +13,7 @@ use bti_dht::ktable::{self, KTable};
 use bti_dht::responder::DhtResponder;
 use redb::Database;
 use tokio::sync::{mpsc, Semaphore};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use super::config::CrawlConfig;
 
@@ -326,8 +326,8 @@ pub async fn run_crawler(
                     Err(_) => return,
                 };
 
-                // Try get_peers first to find more peers
-                let mut peers = vec![peer];
+                // Try get_peers first to find actual torrent peers
+                let mut peers = Vec::new();
                 if let Ok(result) = client.get_peers(peer, infohash).await {
                     for v in result.values {
                         if peers.len() < 10 {
@@ -335,6 +335,11 @@ pub async fn run_crawler(
                         }
                     }
                 }
+                // Only fall back to DHT node if no real peers found
+                if peers.is_empty() {
+                    peers.push(peer);
+                }
+                debug!("fetching {} with {} peers", hex::encode(&infohash[..6]), peers.len());
 
                 stats.meta_requests.fetch_add(1, Ordering::Relaxed);
 
@@ -350,7 +355,10 @@ pub async fn run_crawler(
                             });
                             return;
                         }
-                        Err(_) => continue,
+                        Err(e) => {
+                            trace!("meta fetch {} from {} failed: {}", hex::encode(&infohash[..6]), p, e);
+                            continue;
+                        }
                     }
                 }
                 stats.meta_failed.fetch_add(1, Ordering::Relaxed);
