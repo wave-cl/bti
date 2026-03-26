@@ -27,12 +27,20 @@ pub fn open_db(path: &Path) -> Result<Database, Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let db = Database::create(path)?;
+    let mut db = Database::builder()
+        .set_cache_size(64 * 1024 * 1024)
+        .create(path)?;
 
+    // Ensure tables exist
     let wtx = db.begin_write()?;
     wtx.open_table(TORRENTS)?;
     wtx.open_table(TIME_INDEX)?;
     wtx.commit()?;
+
+    // Compact to reclaim COW bloat from prior runs
+    if let Err(e) = db.compact() {
+        tracing::warn!("compaction failed: {}", e);
+    }
 
     Ok(db)
 }
@@ -108,8 +116,7 @@ pub fn get_entry(
     }
 }
 
-/// Iterate entries since a given timestamp (epoch-offset u32), yielding (infohash, entry).
-/// Calls the provided closure for each entry. Stops if the closure returns false.
+/// Iterate entries from a given timestamp (inclusive). For sync protocol use.
 pub fn entries_since<F>(
     rtx: &ReadTransaction,
     since: u32,
@@ -118,21 +125,63 @@ pub fn entries_since<F>(
 where
     F: FnMut(InfoHash, TorrentEntry) -> bool,
 {
+    let cursor = time_index_key(since, &[0u8; 20]);
+    entries_after(rtx, &cursor, |ih, entry, _key| f(ih, entry))
+}
+
+/// Iterate entries after a given cursor (timestamp + infohash), yielding (infohash, entry).
+/// Calls the provided closure for each entry. Stops if the closure returns false.
+/// Use `[0u8; 24]` as cursor to start from the beginning.
+pub fn entries_after<F>(
+    rtx: &ReadTransaction,
+    cursor: &[u8; 24],
+    mut f: F,
+) -> Result<(), Error>
+where
+    F: FnMut(InfoHash, TorrentEntry, [u8; 24]) -> bool,
+{
     let ti = rtx.open_table(TIME_INDEX)?;
     let torrents = rtx.open_table(TORRENTS)?;
 
-    let start_key: &[u8; 24] = &time_index_key(since, &[0u8; 20]);
-    let range = ti.range::<&[u8; 24]>(start_key..)?;
+    // Use exclusive start: skip the cursor key itself
+    let range = if *cursor == [0u8; 24] {
+        ti.range::<&[u8; 24]>(..)?
+    } else {
+        // Start after the cursor by using an exclusive range
+        // We need the next key after cursor, so we iterate from cursor and skip the first if it matches
+        ti.range::<&[u8; 24]>(cursor..)?
+    };
+
+    let skip_first = *cursor != [0u8; 24];
+    let mut skipped = false;
 
     for item in range {
         let (key, _) = item?;
         let key_bytes = key.value();
+
+        // Skip the cursor key itself (exclusive start)
+        if skip_first && !skipped {
+            let mut cursor_match = true;
+            for i in 0..24 {
+                if key_bytes[i] != cursor[i] {
+                    cursor_match = false;
+                    break;
+                }
+            }
+            skipped = true;
+            if cursor_match {
+                continue;
+            }
+        }
+
+        let mut ti_key = [0u8; 24];
+        ti_key.copy_from_slice(key_bytes);
         let mut infohash = [0u8; 20];
         infohash.copy_from_slice(&key_bytes[4..24]);
 
         if let Some(data) = torrents.get(&infohash)? {
             let entry = decode_entry(data.value())?;
-            if !f(infohash, entry) {
+            if !f(infohash, entry, ti_key) {
                 break;
             }
         }
@@ -188,5 +237,19 @@ pub fn get_meta_u32(rtx: &ReadTransaction, key: &str) -> Result<u32, Error> {
 pub fn set_meta_u32(wtx: &WriteTransaction, key: &str, val: u32) -> Result<(), Error> {
     let mut table = wtx.open_table(META)?;
     table.insert(key, val.to_be_bytes().as_slice())?;
+    Ok(())
+}
+
+/// Drop all classification tables and reset the classifier watermark.
+pub fn drop_classification(db: &Database) -> Result<(), Error> {
+    let wtx = db.begin_write()?;
+    let _ = wtx.delete_table(CATEGORIES);
+    let _ = wtx.delete_table(SEARCH_INDEX);
+    let _ = wtx.delete_table(CATEGORY_STATS);
+    // Reset classifier watermark
+    if let Ok(mut meta) = wtx.open_table(META) {
+        let _ = meta.remove("classifier_ts");
+    }
+    wtx.commit()?;
     Ok(())
 }

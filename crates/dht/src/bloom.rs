@@ -15,8 +15,8 @@ impl StableBloomFilter {
     /// - `fp_rate`: desired false positive rate (e.g., 0.001)
     pub fn new(capacity: usize, fp_rate: f64) -> Self {
         let num_hashes = 3;
-        let num_cells = ((capacity as f64 * fp_rate.ln().abs()) / (2.0_f64.ln().powi(2))) as usize;
-        let num_cells = num_cells.max(1024);
+        // ~2 bytes per item gives acceptable FPR with counter-based decay
+        let num_cells = (capacity * 2).max(1024);
         let decay_count = num_hashes; // decay same number of cells per insert
 
         Self {

@@ -10,20 +10,25 @@ const BATCH_SIZE: usize = 10_000;
 
 /// Continuously classifies new entries from TORRENTS that aren't yet in CATEGORIES.
 pub async fn run_classifier_loop(db: Arc<Database>) {
-    // Load watermark from persistent storage
-    let mut last_ts: u32 = {
+    // Load watermark and build cursor from persisted timestamp
+    let mut cursor: [u8; 24] = {
         match db.begin_read() {
-            Ok(rtx) => storage::get_meta_u32(&rtx, CLASSIFIER_TS_KEY).unwrap_or(0),
-            Err(_) => 0,
+            Ok(rtx) => {
+                let ts = storage::get_meta_u32(&rtx, CLASSIFIER_TS_KEY).unwrap_or(0);
+                if ts > 0 {
+                    info!("classifier resuming from timestamp {}", ts);
+                    // Start from this timestamp with zeroed infohash — entries_after will skip exact match
+                    storage::time_index_key(ts, &[0u8; 20])
+                } else {
+                    [0u8; 24]
+                }
+            }
+            Err(_) => [0u8; 24],
         }
     };
 
-    if last_ts > 0 {
-        info!("classifier resuming from timestamp {}", last_ts);
-    }
-
     loop {
-        match classify_batch(&db, &mut last_ts) {
+        match classify_batch(&db, &mut cursor) {
             Ok(0) => {}
             Ok(n) => {
                 info!("classified {} entries", n);
@@ -39,12 +44,14 @@ pub async fn run_classifier_loop(db: Arc<Database>) {
 
 fn classify_batch(
     db: &Database,
-    last_ts: &mut u32,
+    cursor: &mut [u8; 24],
 ) -> Result<u64, Box<dyn std::error::Error>> {
     let rtx = db.begin_read()?;
     let mut entries = Vec::with_capacity(BATCH_SIZE);
+    let mut last_cursor = *cursor;
 
-    storage::entries_since(&rtx, *last_ts, |infohash, entry| {
+    storage::entries_after(&rtx, cursor, |infohash, entry, key| {
+        last_cursor = key;
         entries.push((infohash, entry));
         entries.len() < BATCH_SIZE
     })?;
@@ -53,6 +60,8 @@ fn classify_batch(
     if entries.is_empty() {
         return Ok(0);
     }
+
+    *cursor = last_cursor;
 
     let wtx = db.begin_write()?;
 
@@ -64,21 +73,18 @@ fn classify_batch(
     for (infohash, entry) in &entries {
         // Skip if already classified
         if cat_table.get(infohash)?.is_some() {
-            *last_ts = entry.discovered_at;
             continue;
         }
 
         let category = bti_classifier::classify(&entry.name);
         cat_table.insert(infohash, category as u8)?;
 
-        // Update category stats
         let current = stats_table
             .get(category as u8)?
             .map(|v| v.value())
             .unwrap_or(0);
         stats_table.insert(category as u8, current + 1)?;
 
-        // Build search index
         for token in tokenize(&entry.name) {
             let mut key = Vec::with_capacity(token.len() + 1 + 20);
             key.extend_from_slice(token.as_bytes());
@@ -87,12 +93,12 @@ fn classify_batch(
             search_table.insert(key.as_slice(), &[] as &[u8])?;
         }
 
-        *last_ts = entry.discovered_at;
         count += 1;
     }
 
-    // Persist watermark
-    storage::set_meta_u32(&wtx, CLASSIFIER_TS_KEY, *last_ts)?;
+    // Persist watermark as timestamp
+    let last_ts = u32::from_be_bytes([cursor[0], cursor[1], cursor[2], cursor[3]]);
+    storage::set_meta_u32(&wtx, CLASSIFIER_TS_KEY, last_ts)?;
 
     drop(cat_table);
     drop(search_table);

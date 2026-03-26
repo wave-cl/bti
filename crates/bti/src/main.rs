@@ -1,5 +1,6 @@
 mod crawl;
 mod migrate;
+mod reclassify;
 mod web;
 
 use clap::{Parser, Subcommand};
@@ -44,6 +45,13 @@ enum Commands {
         #[arg(long, default_value = "0.0.0.0:8080")]
         listen: SocketAddr,
     },
+
+    /// Drop all classifications and re-classify from scratch
+    Reclassify {
+        /// Database path
+        #[arg(long, default_value = "~/.bti/db")]
+        db_path: String,
+    },
 }
 
 #[tokio::main]
@@ -85,6 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 listen,
             })
             .await?;
+        }
+        Commands::Reclassify { db_path } => {
+            reclassify::run(expand_path(&db_path))?;
         }
     }
 
