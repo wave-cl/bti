@@ -7,7 +7,10 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:20px;max-width:900px;margin:0 auto}
-h1{font-size:1.5em;margin-bottom:20px;color:#fff}
+h1{font-size:1.5em;margin-bottom:0;color:#fff}
+.topbar{display:flex;align-items:baseline;gap:16px;margin-bottom:16px}
+.topbar .info{font-size:.85em;color:#888}
+.topbar .info b{color:#4fc3f7}
 .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
 .stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em}
 .stat b{display:block;font-size:1.2em;color:#4fc3f7}
@@ -21,7 +24,7 @@ input:focus{outline:none;border-color:#4fc3f7}
 </style>
 </head>
 <body>
-<h1>bti</h1>
+<div class="topbar"><h1>bti</h1><span class="info" id="topinfo"></span></div>
 <div class="stats" id="stats"></div>
 <input type="text" id="q" placeholder="Search torrents..." autofocus>
 <ul class="results" id="results"></ul>
@@ -29,7 +32,8 @@ input:focus{outline:none;border-color:#4fc3f7}
 const $=s=>document.querySelector(s);
 const fmt=n=>{if(n>=1e12)return(n/1e12).toFixed(1)+'TB';if(n>=1e9)return(n/1e9).toFixed(1)+'GB';if(n>=1e6)return(n/1e6).toFixed(1)+'MB';if(n>=1e3)return(n/1e3).toFixed(1)+'KB';return n+'B'};
 fetch('/api/stats').then(r=>r.json()).then(d=>{
-  let h=`<div class="stat"><b>${d.total.toLocaleString()}</b>total</div>`;
+  $('#topinfo').innerHTML=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> db`;
+  let h='';
   for(const[k,v]of Object.entries(d.categories||{}))if(v>0)h+=`<div class="stat"><b>${v.toLocaleString()}</b>${k}</div>`;
   $('#stats').innerHTML=h;
 });

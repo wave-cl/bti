@@ -1,6 +1,5 @@
 mod crawl;
 mod migrate;
-mod sync;
 mod web;
 
 use clap::{Parser, Subcommand};
@@ -23,36 +22,21 @@ enum Commands {
         migrate: Option<String>,
     },
 
-    /// Sync entries from a crawl agent via sQUIC
-    Sync {
-        /// Crawl agent sQUIC address
-        #[arg(long)]
-        server_addr: SocketAddr,
-
-        /// Crawl agent Ed25519 public key (hex)
-        #[arg(long)]
-        server_key: String,
-
-        /// Local database path
-        #[arg(long, default_value = "~/.bti/db")]
-        db_path: String,
-
-        /// Sync once and exit (default: continuous loop)
-        #[arg(long)]
-        once: bool,
-    },
-
-    /// Start the web dashboard with background sync and classification
+    /// Start the web dashboard with classification
     Web {
-        /// Crawl agent sQUIC address
+        /// Run the DHT crawler in-process (same-machine mode)
         #[arg(long)]
-        crawler_addr: SocketAddr,
+        crawl: bool,
 
-        /// Crawl agent Ed25519 public key (hex)
-        #[arg(long)]
-        crawler_key: String,
+        /// Remote crawl agent sQUIC address (mutually exclusive with --crawl)
+        #[arg(long, requires = "crawler_key")]
+        crawler_addr: Option<SocketAddr>,
 
-        /// Database path (shared with crawl/sync)
+        /// Remote crawl agent Ed25519 public key (hex)
+        #[arg(long, requires = "crawler_addr")]
+        crawler_key: Option<String>,
+
+        /// Database path
         #[arg(long, default_value = "~/.bti/db")]
         db_path: String,
 
@@ -77,33 +61,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Crawl { migrate } => {
             crawl::run(migrate).await?;
         }
-        Commands::Sync {
-            server_addr,
-            server_key,
-            db_path,
-            once,
-        } => {
-            let key_bytes = parse_key(&server_key)?;
-            let db_path = expand_path(&db_path);
-            sync::run(sync::SyncConfig {
-                server_addr,
-                server_key: key_bytes,
-                db_path,
-                once,
-            })
-            .await?;
-        }
         Commands::Web {
+            crawl,
             crawler_addr,
             crawler_key,
             db_path,
             listen,
         } => {
-            let key_bytes = parse_key(&crawler_key)?;
+            if crawl && crawler_addr.is_some() {
+                return Err("--crawl and --crawler-addr are mutually exclusive".into());
+            }
+
             let db_path = expand_path(&db_path);
+            let sync_target = match (crawler_addr, crawler_key) {
+                (Some(addr), Some(key)) => Some((addr, parse_key(&key)?)),
+                _ => None,
+            };
+
             web::run(web::WebConfig {
-                crawler_addr,
-                crawler_key: key_bytes,
+                crawl,
+                sync_target,
                 db_path,
                 listen,
             })

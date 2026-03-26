@@ -4,10 +4,12 @@ pub mod sync_server;
 
 use std::sync::Arc;
 
+use redb::Database;
 use tracing::info;
 
 use config::CrawlConfig;
 
+/// Full crawl mode: opens db, starts sync server, runs crawler.
 pub async fn run(migrate_path: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     let config = CrawlConfig::from_env();
 
@@ -32,5 +34,12 @@ pub async fn run(migrate_path: Option<String>) -> Result<(), Box<dyn std::error:
     // Run crawler (blocks)
     crawler::run_crawler(&config, db).await?;
 
+    Ok(())
+}
+
+/// Crawler-only mode for embedding in web process. No sync server.
+pub async fn start_crawler_only(db: Arc<Database>) -> Result<(), Box<dyn std::error::Error>> {
+    let config = CrawlConfig::from_env();
+    crawler::run_crawler(&config, db).await?;
     Ok(())
 }

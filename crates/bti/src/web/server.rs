@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -14,13 +15,15 @@ use tracing::info;
 #[derive(Clone)]
 struct AppState {
     db: Arc<Database>,
+    db_path: PathBuf,
 }
 
 pub async fn run_server(
     listen: SocketAddr,
     db: Arc<Database>,
+    db_path: PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState { db };
+    let state = AppState { db, db_path };
 
     let app = Router::new()
         .route("/", get(index))
@@ -42,6 +45,7 @@ async fn index() -> Html<&'static str> {
 #[derive(serde::Serialize)]
 struct StatsResponse {
     total: u64,
+    db_size: u64,
     categories: std::collections::HashMap<String, u64>,
 }
 
@@ -49,6 +53,10 @@ async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>,
     let rtx = state.db.begin_read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let total = storage::count(&rtx).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let db_size = std::fs::metadata(&state.db_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     let mut categories = std::collections::HashMap::new();
     if let Ok(table) = rtx.open_table(storage::CATEGORY_STATS) {
@@ -59,7 +67,7 @@ async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>,
         }
     }
 
-    Ok(Json(StatsResponse { total, categories }))
+    Ok(Json(StatsResponse { total, db_size, categories }))
 }
 
 #[derive(serde::Deserialize)]
