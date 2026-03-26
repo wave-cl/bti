@@ -50,34 +50,37 @@ impl MetadataFetcher {
             .map_err(|_| FetchError::Timeout)?
             .map_err(FetchError::Io)?;
 
-        // Disable Nagle, set linger to 0
         stream.set_nodelay(true).ok();
-
         let mut stream = stream;
 
-        // BitTorrent handshake
-        bt_handshake(&mut stream, &info_hash).await?;
+        bt_handshake(&mut stream, &info_hash).await.map_err(|e| {
+            trace!("bt_handshake failed for {}: {}", addr, e);
+            e
+        })?;
 
-        // Extension handshake
-        let (metadata_size, ut_metadata_id) = ex_handshake(&mut stream).await?;
+        let (metadata_size, ut_metadata_id) = ex_handshake(&mut stream).await.map_err(|e| {
+            trace!("ex_handshake failed for {}: {}", addr, e);
+            e
+        })?;
 
         if metadata_size == 0 || metadata_size > MAX_METADATA_SIZE as u32 {
             return Err(FetchError::Protocol("invalid metadata size".into()));
         }
 
-        // Request all pieces
+        trace!("fetching metadata from {}: size={} ut_id={}", addr, metadata_size, ut_metadata_id);
+
         request_all_pieces(&mut stream, metadata_size, ut_metadata_id).await?;
 
-        // Read all pieces
-        let metadata = read_all_pieces(&mut stream, metadata_size).await?;
+        let metadata = read_all_pieces(&mut stream, metadata_size).await.map_err(|e| {
+            trace!("read_all_pieces failed for {}: {}", addr, e);
+            e
+        })?;
 
-        // Verify SHA1
         let hash: [u8; 20] = Sha1::digest(&metadata).into();
         if hash != info_hash {
             return Err(FetchError::Protocol("infohash mismatch".into()));
         }
 
-        // Parse info dict
         parse_meta_info(&metadata)
     }
 }
@@ -140,22 +143,40 @@ async fn ex_handshake(stream: &mut TcpStream) -> Result<(u32, u8), FetchError> {
     // Read extension handshake response
     let resp = read_ex_message(stream).await?;
 
-    // Parse bencode response (skip first 2 bytes: msg_type + ext_id)
+    if resp.len() < 2 {
+        return Err(FetchError::Protocol("ex_handshake response too short".into()));
+    }
+
+    // resp[0] = 20 (extended msg), resp[1] = ext_id (should be 0 for handshake)
     let payload = &resp[2..];
     let val: bt_bencode::Value =
-        bt_bencode::from_slice(payload).map_err(|_| FetchError::Protocol("bad bencode".into()))?;
+        bt_bencode::from_slice(payload).map_err(|e| {
+            trace!("bad bencode in ex_handshake: {:?}, first 100 bytes: {:?}", e, &payload[..payload.len().min(100)]);
+            FetchError::Protocol("bad bencode".into())
+        })?;
 
     let m = val
         .get("m")
-        .ok_or_else(|| FetchError::Protocol("missing m dict".into()))?;
+        .ok_or_else(|| {
+            trace!("no 'm' key in ex_handshake response, keys: {:?}",
+                val.as_dict().map(|d| d.keys().map(|k| String::from_utf8_lossy(k.as_slice()).to_string()).collect::<Vec<_>>()));
+            FetchError::Protocol("missing m dict".into())
+        })?;
     let ut_metadata = m
         .get("ut_metadata")
-        .and_then(|v| v.as_i64())
-        .ok_or_else(|| FetchError::Protocol("missing ut_metadata".into()))?;
+        .and_then(|v| {
+            crate::msg::value_to_i64(v)
+        })
+        .ok_or_else(|| {
+            trace!("ut_metadata lookup failed. m keys: {:?}, raw get: {:?}",
+                m.as_dict().map(|d| d.keys().map(|k| String::from_utf8_lossy(k.as_slice()).to_string()).collect::<Vec<_>>()),
+                m.get("ut_metadata"));
+            FetchError::Protocol("missing ut_metadata".into())
+        })?;
 
     let metadata_size = val
         .get("metadata_size")
-        .and_then(|v| v.as_i64())
+        .and_then(crate::msg::value_to_i64)
         .ok_or_else(|| FetchError::Protocol("missing metadata_size".into()))?;
 
     if ut_metadata < 1 || ut_metadata > 254 {
@@ -247,11 +268,11 @@ fn parse_piece_dict(data: &[u8]) -> Result<(usize, PieceDict), FetchError> {
 
     let msg_type = val
         .get("msg_type")
-        .and_then(|v| v.as_i64())
+        .and_then(crate::msg::value_to_i64)
         .unwrap_or(-1) as i32;
     let piece = val
         .get("piece")
-        .and_then(|v| v.as_i64())
+        .and_then(crate::msg::value_to_i64)
         .unwrap_or(0) as i32;
 
     Ok((dict_end, PieceDict { msg_type, piece }))
@@ -381,7 +402,7 @@ fn parse_meta_info(data: &[u8]) -> Result<MetainfoResult, FetchError> {
         .unwrap_or_default();
 
     // Single-file torrent
-    if let Some(length) = val.get("length").and_then(|v| v.as_i64()) {
+    if let Some(length) = val.get("length").and_then(crate::msg::value_to_i64) {
         return Ok(MetainfoResult {
             name,
             size: length as u64,
@@ -392,7 +413,7 @@ fn parse_meta_info(data: &[u8]) -> Result<MetainfoResult, FetchError> {
     let mut total_size: u64 = 0;
     if let Some(files) = val.get("files").and_then(|v| v.as_array()) {
         for f in files {
-            if let Some(length) = f.get("length").and_then(|v| v.as_i64()) {
+            if let Some(length) = f.get("length").and_then(crate::msg::value_to_i64) {
                 total_size += length as u64;
             }
         }

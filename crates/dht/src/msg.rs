@@ -86,7 +86,12 @@ fn get_id(val: &Value, key: &str) -> Option<[u8; 20]> {
 }
 
 fn get_int(val: &Value, key: &str) -> Option<i64> {
-    val.get(key).and_then(|v| v.as_i64())
+    val.get(key).and_then(value_to_i64)
+}
+
+/// Extract integer from bt_bencode Value, handling both Signed and Unsigned variants.
+pub fn value_to_i64(v: &Value) -> Option<i64> {
+    v.as_i64().or_else(|| v.as_u64().map(|u| u as i64))
 }
 
 fn get_str(val: &Value, key: &str) -> Option<String> {
