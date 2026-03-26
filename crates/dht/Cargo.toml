@@ -1,0 +1,13 @@
+[package]
+name = "bti-dht"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bti-core = { path = "../core" }
+tokio = { version = "1", features = ["full"] }
+bt_bencode = "0.8"
+sha1 = "0.10"
+rand = "0.8"
+tracing = "0.1"
+thiserror = "2"

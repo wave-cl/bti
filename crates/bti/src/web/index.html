@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bti - BitTorrent Index</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:20px;max-width:900px;margin:0 auto}
+h1{font-size:1.5em;margin-bottom:20px;color:#fff}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em}
+.stat b{display:block;font-size:1.2em;color:#4fc3f7}
+input[type=text]{width:100%;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#fff;font-size:1em;margin-bottom:16px}
+input:focus{outline:none;border-color:#4fc3f7}
+.results{list-style:none}
+.results li{background:#1a1a1a;border:1px solid #222;border-radius:6px;padding:10px 14px;margin-bottom:8px}
+.results .name{color:#fff;font-weight:500}
+.results .meta{font-size:.8em;color:#888;margin-top:4px}
+.tag{display:inline-block;background:#333;border-radius:3px;padding:1px 6px;font-size:.75em;margin-right:4px}
+</style>
+</head>
+<body>
+<h1>bti</h1>
+<div class="stats" id="stats"></div>
+<input type="text" id="q" placeholder="Search torrents..." autofocus>
+<ul class="results" id="results"></ul>
+<script>
+const $=s=>document.querySelector(s);
+const fmt=n=>{if(n>=1e12)return(n/1e12).toFixed(1)+'TB';if(n>=1e9)return(n/1e9).toFixed(1)+'GB';if(n>=1e6)return(n/1e6).toFixed(1)+'MB';if(n>=1e3)return(n/1e3).toFixed(1)+'KB';return n+'B'};
+fetch('/api/stats').then(r=>r.json()).then(d=>{
+  let h=`<div class="stat"><b>${d.total.toLocaleString()}</b>total</div>`;
+  for(const[k,v]of Object.entries(d.categories||{}))if(v>0)h+=`<div class="stat"><b>${v.toLocaleString()}</b>${k}</div>`;
+  $('#stats').innerHTML=h;
+});
+let t;$('#q').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{
+  const q=e.target.value.trim();if(!q){$('#results').innerHTML='';return}
+  fetch('/api/search?q='+encodeURIComponent(q)+'&limit=50').then(r=>r.json()).then(d=>{
+    $('#results').innerHTML=d.map(r=>`<li><div class="name">${esc(r.name)}</div><div class="meta"><span class="tag">${r.category}</span>${fmt(r.size)} &middot; ${r.infohash.slice(0,12)}...</div></li>`).join('');
+  });
+},300)};
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+</script>
+</body>
+</html>
