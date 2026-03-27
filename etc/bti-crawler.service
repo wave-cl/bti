@@ -1,0 +1,15 @@
+[Unit]
+Description=BTI torrent metadata crawler
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/bti crawl
+Restart=on-failure
+RestartSec=5
+StateDirectory=bti
+Environment=BTI_DB_PATH=/var/lib/bti/db
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

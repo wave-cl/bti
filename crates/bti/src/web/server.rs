@@ -125,8 +125,12 @@ async fn api_search(
         };
 
         let mut hashes = std::collections::HashSet::new();
+        const MAX_PER_TOKEN: usize = 10_000;
         if let Ok(range) = search_table.range::<&[u8]>(prefix.as_slice()..prefix_end.as_slice()) {
             for item in range {
+                if hashes.len() >= MAX_PER_TOKEN {
+                    break;
+                }
                 if let Ok((key, _)) = item {
                     let key_bytes = key.value();
                     if key_bytes.len() >= prefix.len() + 20 {

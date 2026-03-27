@@ -37,11 +37,6 @@ pub fn open_db(path: &Path) -> Result<Database, Error> {
     wtx.open_table(TIME_INDEX)?;
     wtx.commit()?;
 
-    // Compact to reclaim COW bloat from prior runs
-    if let Err(e) = db.compact() {
-        tracing::warn!("compaction failed: {}", e);
-    }
-
     Ok(db)
 }
 

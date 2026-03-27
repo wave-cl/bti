@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "bti", about = "BitTorrent indexing service suite")]
+#[command(name = "bti", about = "BitTorrent indexing service suite", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -48,6 +48,13 @@ enum Commands {
 
     /// Drop all classifications and re-classify from scratch
     Reclassify {
+        /// Database path
+        #[arg(long, default_value = "~/.bti/db")]
+        db_path: String,
+    },
+
+    /// Compact the database to reclaim disk space
+    Compact {
         /// Database path
         #[arg(long, default_value = "~/.bti/db")]
         db_path: String,
@@ -96,6 +103,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Reclassify { db_path } => {
             reclassify::run(expand_path(&db_path))?;
+        }
+        Commands::Compact { db_path } => {
+            let path = expand_path(&db_path);
+            tracing::info!("compacting database at {}", path.display());
+            let mut db = bti_core::storage::open_db(&path)?;
+            match db.compact() {
+                Ok(true) => tracing::info!("compaction complete, space reclaimed"),
+                Ok(false) => tracing::info!("compaction complete, no space to reclaim"),
+                Err(e) => tracing::error!("compaction failed: {}", e),
+            }
         }
     }
 

@@ -164,7 +164,9 @@ impl KTable {
         inner.nodes.retain(|n| IpAddr::V4(*n.addr.ip()) != addr);
     }
 
-    pub fn put_hash(&self, id: [u8; 20], peers: Vec<SocketAddr>) {
+    pub fn put_hash(&self, id: [u8; 20], mut peers: Vec<SocketAddr>) {
+        // Cap peers per hash to prevent unbounded growth
+        peers.truncate(20);
         let mut inner = self.inner.write().unwrap();
         for h in inner.hashes.iter_mut() {
             if h.id == id {
