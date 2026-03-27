@@ -25,8 +25,9 @@ pub async fn run(migrate_path: Option<String>) -> Result<(), Box<dyn std::error:
     let sync_db = db.clone();
     let sync_addr = config.sync_addr;
     let sync_key = config.sync_key_file.clone();
+    let sync_db_path = config.db_path.clone();
     tokio::spawn(async move {
-        if let Err(e) = sync_server::run_sync_server(sync_addr, &sync_key, sync_db).await {
+        if let Err(e) = sync_server::run_sync_server(sync_addr, &sync_key, sync_db, sync_db_path).await {
             tracing::error!("sync server error: {}", e);
         }
     });

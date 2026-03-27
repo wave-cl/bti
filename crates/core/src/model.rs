@@ -5,10 +5,17 @@ pub type InfoHash = [u8; 20];
 pub const EPOCH_OFFSET: u64 = 1_577_836_800;
 
 #[derive(Clone, Debug)]
+pub struct FileInfo {
+    pub path: String,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct TorrentEntry {
     pub name: String,
     pub size: u64,
     pub discovered_at: u32, // epoch-offset seconds
+    pub files: Vec<FileInfo>,
 }
 
 impl TorrentEntry {
@@ -16,13 +23,9 @@ impl TorrentEntry {
         self.discovered_at as u64 + EPOCH_OFFSET
     }
 
-    pub fn from_unix(name: String, size: u64, unix_secs: u64) -> Self {
+    pub fn from_unix(name: String, size: u64, unix_secs: u64, files: Vec<FileInfo>) -> Self {
         let discovered_at = (unix_secs.saturating_sub(EPOCH_OFFSET)) as u32;
-        Self {
-            name,
-            size,
-            discovered_at,
-        }
+        Self { name, size, discovered_at, files }
     }
 }
 

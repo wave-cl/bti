@@ -19,7 +19,7 @@ impl CrawlConfig {
         Self {
             dht_port: env_or("DHT_PORT", 6881),
             scaling_factor: env_or("SCALING_FACTOR", 10),
-            db_path: env_path_or("DB_PATH", bti_dir.join("db")),
+            db_path: env_path_or("BTI_DB_PATH", bti_dir.join("db")),
             sync_addr: env_or("SYNC_ADDR", "0.0.0.0:6880".parse().unwrap()),
             sync_key_file: env_path_or("SYNC_KEY_FILE", bti_dir.join("sync.key")),
             log_level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".into()),

@@ -13,9 +13,16 @@ const BT_PROTOCOL: &[u8] = b"\x13BitTorrent protocol";
 const EXTENSION_BITS: [u8; 8] = [0, 0, 0, 0, 0, 0x10, 0, 0x01];
 
 #[derive(Debug)]
+pub struct FileEntry {
+    pub path: String,
+    pub size: u64,
+}
+
+#[derive(Debug)]
 pub struct MetainfoResult {
     pub name: String,
     pub size: u64,
+    pub files: Vec<FileEntry>,
 }
 
 pub struct MetadataFetcher {
@@ -403,26 +410,38 @@ fn parse_meta_info(data: &[u8]) -> Result<MetainfoResult, FetchError> {
 
     // Single-file torrent
     if let Some(length) = val.get("length").and_then(crate::msg::value_to_i64) {
+        let size = length as u64;
         return Ok(MetainfoResult {
+            files: vec![FileEntry { path: name.clone(), size }],
             name,
-            size: length as u64,
+            size,
         });
     }
 
     // Multi-file torrent
     let mut total_size: u64 = 0;
-    if let Some(files) = val.get("files").and_then(|v| v.as_array()) {
-        for f in files {
-            if let Some(length) = f.get("length").and_then(crate::msg::value_to_i64) {
-                total_size += length as u64;
+    let mut files = Vec::new();
+    if let Some(file_list) = val.get("files").and_then(|v| v.as_array()) {
+        for f in file_list {
+            let length = f.get("length").and_then(crate::msg::value_to_i64).unwrap_or(0) as u64;
+            total_size += length;
+            // path is a list of path components
+            let path = f.get("path")
+                .and_then(|p| p.as_array())
+                .map(|parts| {
+                    parts.iter()
+                        .filter_map(|p| p.as_byte_str().map(|b| String::from_utf8_lossy(b.as_slice()).into_owned()))
+                        .collect::<Vec<_>>()
+                        .join("/")
+                })
+                .unwrap_or_default();
+            if !path.is_empty() {
+                files.push(FileEntry { path, size: length });
             }
         }
     }
 
-    Ok(MetainfoResult {
-        name,
-        size: total_size,
-    })
+    Ok(MetainfoResult { name, size: total_size, files })
 }
 
 #[derive(Debug, thiserror::Error)]

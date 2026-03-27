@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -19,6 +19,11 @@ struct AppState {
     db_path: PathBuf,
     sync_status: Option<Arc<AtomicU8>>,
     sync_info: Option<String>,
+    crawler_db_size: Option<Arc<AtomicU64>>,
+    crawler_total: Option<Arc<AtomicU64>>,
+    crawler_mem_rss: Option<Arc<AtomicU64>>,
+    crawler_disk_used: Option<Arc<AtomicU64>>,
+    crawler_disk_total: Option<Arc<AtomicU64>>,
 }
 
 pub async fn run_server(
@@ -27,12 +32,18 @@ pub async fn run_server(
     db_path: PathBuf,
     sync_status: Option<Arc<AtomicU8>>,
     sync_info: Option<String>,
+    crawler_db_size: Option<Arc<AtomicU64>>,
+    crawler_total: Option<Arc<AtomicU64>>,
+    crawler_mem_rss: Option<Arc<AtomicU64>>,
+    crawler_disk_used: Option<Arc<AtomicU64>>,
+    crawler_disk_total: Option<Arc<AtomicU64>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState { db, db_path, sync_status, sync_info };
+    let state = AppState { db, db_path, sync_status, sync_info, crawler_db_size, crawler_total, crawler_mem_rss, crawler_disk_used, crawler_disk_total };
 
     let app = Router::new()
         .route("/", get(index))
         .route("/api/stats", get(api_stats))
+        .route("/api/recent", get(api_recent))
         .route("/api/search", get(api_search))
         .route("/api/torrent/{infohash}", get(api_torrent))
         .with_state(state);
@@ -51,6 +62,11 @@ async fn index() -> Html<&'static str> {
 struct SyncInfo {
     label: String,
     state: String,
+    crawler_db_size: u64,
+    crawler_total: u64,
+    crawler_mem_rss: u64,
+    crawler_disk_used: u64,
+    crawler_disk_total: u64,
 }
 
 #[derive(serde::Serialize)]
@@ -82,9 +98,15 @@ async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>,
     let sync = state.sync_info.as_ref().map(|label| {
         let state_str = match state.sync_status.as_ref().map(|s| s.load(Ordering::Relaxed)) {
             Some(2) => "connected",
+            Some(3) => "disconnected",
             _ => "connecting",
         };
-        SyncInfo { label: label.clone(), state: state_str.to_string() }
+        let crawler_db_size = state.crawler_db_size.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
+        let crawler_total = state.crawler_total.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
+        let crawler_mem_rss = state.crawler_mem_rss.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
+        let crawler_disk_used = state.crawler_disk_used.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
+        let crawler_disk_total = state.crawler_disk_total.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
+        SyncInfo { label: label.clone(), state: state_str.to_string(), crawler_db_size, crawler_total, crawler_mem_rss, crawler_disk_used, crawler_disk_total }
     });
 
     Ok(Json(StatsResponse { total, db_size, categories, sync }))
@@ -99,12 +121,63 @@ struct SearchQuery {
 }
 
 #[derive(serde::Serialize)]
+struct FileResult {
+    path: String,
+    size: u64,
+}
+
+#[derive(serde::Serialize)]
 struct SearchResult {
     infohash: String,
     name: String,
     size: u64,
     category: String,
     discovered_at: u64,
+    files: Vec<FileResult>,
+}
+
+#[derive(serde::Deserialize)]
+struct RecentQuery {
+    category: Option<String>,
+}
+
+async fn api_recent(
+    State(state): State<AppState>,
+    Query(params): Query<RecentQuery>,
+) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+    let rtx = state.db.begin_read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let cats = rtx.open_table(storage::CATEGORIES).ok();
+
+    let cat_filter = params.category.as_ref().and_then(|c| {
+        Category::ALL.iter().find(|cat| cat.as_str() == c.as_str()).copied()
+    });
+
+    let cat_filter_u8 = cat_filter.map(|c| c as u8);
+    let entries = storage::recent_entries(&rtx, 50, cat_filter_u8)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let results = entries
+        .into_iter()
+        .map(|(ih, entry)| {
+            let cat = cats
+                .as_ref()
+                .and_then(|t| t.get(&ih).ok().flatten())
+                .map(|v| Category::from_u8(v.value()))
+                .unwrap_or(Category::Other);
+            let ts = entry.unix_timestamp();
+            let files = entry.files.into_iter().map(|f| FileResult { path: f.path, size: f.size }).collect();
+            SearchResult {
+                infohash: hex::encode(ih),
+                name: entry.name,
+                size: entry.size,
+                category: cat.as_str().to_string(),
+                discovered_at: ts,
+                files,
+            }
+        })
+        .collect();
+
+    Ok(Json(results))
 }
 
 async fn api_search(
@@ -216,12 +289,14 @@ async fn api_search(
                 .unwrap_or(Category::Other);
 
             let ts = entry.unix_timestamp();
+            let files = entry.files.into_iter().map(|f| FileResult { path: f.path, size: f.size }).collect();
             results.push(SearchResult {
                 infohash: hex::encode(ih),
                 name: entry.name,
                 size: entry.size,
                 category: cat.as_str().to_string(),
                 discovered_at: ts,
+                files,
             });
         }
     }
@@ -254,11 +329,13 @@ async fn api_torrent(
         .unwrap_or(Category::Other);
 
     let ts = entry.unix_timestamp();
+    let files = entry.files.into_iter().map(|f| FileResult { path: f.path, size: f.size }).collect();
     Ok(Json(SearchResult {
         infohash: infohash_hex,
         name: entry.name,
         size: entry.size,
         category: cat.as_str().to_string(),
         discovered_at: ts,
+        files,
     }))
 }

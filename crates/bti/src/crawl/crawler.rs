@@ -58,6 +58,7 @@ struct MetaResult {
     infohash: [u8; 20],
     name: String,
     size: u64,
+    files: Vec<bti_core::model::FileInfo>,
 }
 
 pub async fn run_crawler(
@@ -458,10 +459,14 @@ pub async fn run_crawler(
                     match fetcher.fetch(item.infohash, p).await {
                         Ok(result) => {
                             stats.meta_success.fetch_add(1, Ordering::Relaxed);
+                            let files = result.files.into_iter()
+                                .map(|f| bti_core::model::FileInfo { path: f.path, size: f.size })
+                                .collect();
                             let _ = tx.send(MetaResult {
                                 infohash: item.infohash,
                                 name: result.name,
                                 size: result.size,
+                                files,
                             }).await;
                             return;
                         }
@@ -513,6 +518,7 @@ fn persist_batch(db: &Database, batch: &mut Vec<MetaResult>, stats: &CrawlerStat
                     name: item.name,
                     size: item.size,
                     discovered_at,
+                    files: item.files,
                 };
                 match bti_core::storage::put_entry(&wtx, &item.infohash, &entry) {
                     Ok(true) => count += 1,

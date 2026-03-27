@@ -40,29 +40,93 @@ pub fn open_db(path: &Path) -> Result<Database, Error> {
     Ok(db)
 }
 
-/// Encode a TorrentEntry into compact binary.
+const ZSTD_MAGIC: u8 = 0x01;
+
+/// Encode a TorrentEntry into compact binary, zstd-compressed.
+/// Format: [0x01][zstd(inner)] where inner = [4B discovered_at][6B size][name_bytes][0x00 + files_bytes if non-empty]
+/// Files: [2B count][per file: 8B size][2B path_len][path_bytes]
 pub fn encode_entry(entry: &TorrentEntry) -> Vec<u8> {
+    let raw = encode_entry_raw(entry);
+    let compressed = zstd::encode_all(raw.as_slice(), 3).unwrap_or(raw);
+    let mut buf = Vec::with_capacity(1 + compressed.len());
+    buf.push(ZSTD_MAGIC);
+    buf.extend_from_slice(&compressed);
+    buf
+}
+
+fn encode_entry_raw(entry: &TorrentEntry) -> Vec<u8> {
     let name_bytes = entry.name.as_bytes();
     let mut buf = Vec::with_capacity(10 + name_bytes.len());
     buf.extend_from_slice(&entry.discovered_at.to_be_bytes());
     buf.extend_from_slice(&encode_u48(entry.size));
     buf.extend_from_slice(name_bytes);
+    if !entry.files.is_empty() {
+        buf.push(0x00);
+        let count = entry.files.len().min(u16::MAX as usize) as u16;
+        buf.extend_from_slice(&count.to_be_bytes());
+        for f in entry.files.iter().take(count as usize) {
+            buf.extend_from_slice(&f.size.to_be_bytes());
+            let path_bytes = f.path.as_bytes();
+            let path_len = path_bytes.len().min(u16::MAX as usize) as u16;
+            buf.extend_from_slice(&path_len.to_be_bytes());
+            buf.extend_from_slice(&path_bytes[..path_len as usize]);
+        }
+    }
     buf
 }
 
-/// Decode compact binary into a TorrentEntry.
+/// Decode compact binary into a TorrentEntry. Handles both zstd-compressed (0x01 prefix) and legacy raw entries.
 pub fn decode_entry(data: &[u8]) -> Result<TorrentEntry, Error> {
+    if data.is_empty() {
+        return Err(Error::InvalidData("empty entry".into()));
+    }
+    if data[0] == ZSTD_MAGIC {
+        let decompressed = zstd::decode_all(&data[1..])
+            .map_err(|e| Error::InvalidData(format!("zstd decompress: {e}").into()))?;
+        decode_entry_raw(&decompressed)
+    } else {
+        decode_entry_raw(data)
+    }
+}
+
+fn decode_entry_raw(data: &[u8]) -> Result<TorrentEntry, Error> {
     if data.len() < 10 {
         return Err(Error::InvalidData("entry too short".into()));
     }
     let discovered_at = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
     let size = decode_u48(&[data[4], data[5], data[6], data[7], data[8], data[9]]);
-    let name = String::from_utf8_lossy(&data[10..]).into_owned();
-    Ok(TorrentEntry {
-        name,
-        size,
-        discovered_at,
-    })
+
+    let rest = &data[10..];
+    let (name_bytes, files) = if let Some(null_pos) = rest.iter().position(|&b| b == 0) {
+        let files = decode_files(&rest[null_pos + 1..]);
+        (&rest[..null_pos], files)
+    } else {
+        (rest, Vec::new())
+    };
+
+    let name = String::from_utf8_lossy(name_bytes).into_owned();
+    Ok(TorrentEntry { name, size, discovered_at, files })
+}
+
+fn decode_files(data: &[u8]) -> Vec<crate::model::FileInfo> {
+    if data.len() < 2 { return Vec::new(); }
+    let count = u16::from_be_bytes([data[0], data[1]]) as usize;
+    let mut files = Vec::with_capacity(count);
+    let mut pos = 2;
+    for _ in 0..count {
+        if pos + 10 > data.len() { break; }
+        let file_size = u64::from_be_bytes([
+            data[pos], data[pos+1], data[pos+2], data[pos+3],
+            data[pos+4], data[pos+5], data[pos+6], data[pos+7],
+        ]);
+        let path_len = u16::from_be_bytes([data[pos+8], data[pos+9]]) as usize;
+        pos += 10;
+        if pos + path_len > data.len() { break; }
+        let path = String::from_utf8_lossy(&data[pos..pos + path_len]).into_owned();
+        pos += path_len;
+        files.push(crate::model::FileInfo { path, size: file_size });
+    }
+    files
 }
 
 /// Build the 24-byte composite key for TIME_INDEX.
@@ -201,6 +265,45 @@ pub fn latest_timestamp(rtx: &ReadTransaction) -> Result<u32, Error> {
         None => 0,
     };
     Ok(result)
+}
+
+/// Get the N most recently discovered entries (newest first), optionally filtered by category.
+/// When cat_filter is Some, scans the full TIME_INDEX until N matching entries are found.
+pub fn recent_entries(
+    rtx: &ReadTransaction,
+    n: usize,
+    cat_filter: Option<u8>,
+) -> Result<Vec<(InfoHash, TorrentEntry)>, Error> {
+    let ti = rtx.open_table(TIME_INDEX)?;
+    let torrents = rtx.open_table(TORRENTS)?;
+    let cats = cat_filter.map(|_| rtx.open_table(CATEGORIES)).transpose()?;
+    let mut results = Vec::with_capacity(n);
+
+    for item in ti.range::<&[u8; 24]>(..)?.rev() {
+        if results.len() >= n {
+            break;
+        }
+        let (key, _) = item?;
+        let key_bytes = key.value();
+        let mut infohash = [0u8; 20];
+        infohash.copy_from_slice(&key_bytes[4..24]);
+
+        if let Some(filter) = cat_filter {
+            let entry_cat = cats.as_ref()
+                .and_then(|t| t.get(&infohash).ok().flatten())
+                .map(|v| v.value())
+                .unwrap_or(crate::model::Category::Other as u8);
+            if entry_cat != filter {
+                continue;
+            }
+        }
+
+        if let Some(data) = torrents.get(&infohash)? {
+            results.push((infohash, decode_entry(data.value())?));
+        }
+    }
+
+    Ok(results)
 }
 
 /// Get total count of torrents.

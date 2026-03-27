@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ed25519_dalek::SigningKey;
@@ -10,6 +10,7 @@ pub async fn run_sync_server(
     addr: SocketAddr,
     key_file: &Path,
     db: Arc<Database>,
+    db_path: PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let signing_key = load_or_generate_key(key_file)?;
     let pub_key = signing_key.verifying_key();
@@ -32,10 +33,11 @@ pub async fn run_sync_server(
         };
 
         let db = db.clone();
+        let db_path = db_path.clone();
         tokio::spawn(async move {
             match incoming.await {
                 Ok(conn) => {
-                    if let Err(e) = handle_sync_connection(conn, db).await {
+                    if let Err(e) = handle_sync_connection(conn, db, db_path).await {
                         warn!("sync connection error: {}", e);
                     }
                 }
@@ -50,6 +52,7 @@ pub async fn run_sync_server(
 async fn handle_sync_connection(
     conn: quinn::Connection,
     db: Arc<Database>,
+    db_path: PathBuf,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (mut send, mut recv) = conn.accept_bi().await?;
 
@@ -57,20 +60,14 @@ async fn handle_sync_connection(
     info!("sync request from {}: since={}", conn.remote_address(), since);
 
     let rtx = db.begin_read()?;
-    let mut count = 0u64;
+    let db_size = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
+    let total = bti_core::storage::count(&rtx)?;
+    let mem_rss = read_mem_rss();
+    let (disk_used, disk_total) = disk_usage(&db_path);
+    bti_core::sync_proto::write_sync_header(&mut send, &bti_core::sync_proto::SyncHeader {
+        db_size, total, mem_rss, disk_used, disk_total,
+    }).await?;
 
-    bti_core::storage::entries_since(&rtx, since, |_infohash, _entry| {
-        // We need to block on async write — use a channel approach
-        // For simplicity, collect entries and write after
-        // Actually, we can't call async from a closure easily.
-        // We'll collect into a vec (limited batches).
-        count += 1;
-        true
-    })?;
-
-    // Re-iterate and write entries via async stream
-    // Since entries_since takes a sync closure, we collect first then stream
-    let rtx = db.begin_read()?;
     let mut entries = Vec::new();
     bti_core::storage::entries_since(&rtx, since, |infohash, entry| {
         entries.push((infohash, entry));
@@ -88,6 +85,37 @@ async fn handle_sync_connection(
     info!("sync complete: sent {} entries to {}", entries.len(), conn.remote_address());
     conn.closed().await;
     Ok(())
+}
+
+fn read_mem_rss() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .unwrap_or_default()
+        .lines()
+        .find(|l| l.starts_with("VmRSS:"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0)
+        * 1024
+}
+
+fn disk_usage(db_path: &Path) -> (u64, u64) {
+    let dir = db_path.parent().unwrap_or(db_path);
+    let path_str = dir.to_str().unwrap_or("/");
+    let c_path = match std::ffi::CString::new(path_str) {
+        Ok(p) => p,
+        Err(_) => return (0, 0),
+    };
+    unsafe {
+        let mut stat: libc::statvfs = std::mem::zeroed();
+        if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
+            let block = stat.f_frsize as u64;
+            let total = stat.f_blocks as u64 * block;
+            let free = stat.f_bfree as u64 * block;
+            (total.saturating_sub(free), total)
+        } else {
+            (0, 0)
+        }
+    }
 }
 
 fn load_or_generate_key(path: &Path) -> Result<SigningKey, Box<dyn std::error::Error>> {

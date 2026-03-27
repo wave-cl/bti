@@ -7,6 +7,11 @@
 //   [8 bytes]  u64 BE size
 //   [2 bytes]  u16 BE name_length
 //   [name_length bytes] name UTF-8
+//   [2 bytes]  u16 BE file_count
+//   per file:
+//     [8 bytes]  u64 BE file_size
+//     [2 bytes]  u16 BE path_length
+//     [path_length bytes] path UTF-8
 //
 // Usage: go run . /path/to/badger > dump.bin
 //        go run . /path/to/badger | bti crawl --migrate -
@@ -68,8 +73,8 @@ func main() {
 				// [2 bytes] name_len (u16 BE)
 				// [name_len bytes] name
 				// [2 bytes] file_count (u16 BE)
-				// [files...]
-				if len(val) < 21 { // 8+8+1+2+0+2 minimum
+				// per file: [8 bytes] size + [2 bytes] path_len + [path_len bytes] path
+				if len(val) < 21 {
 					return nil
 				}
 
@@ -82,6 +87,32 @@ func main() {
 					return nil // corrupted entry
 				}
 				name := val[19 : 19+nameLen]
+				off := 19 + nameLen
+
+				// Parse files
+				type fileEntry struct {
+					size uint64
+					path []byte
+				}
+				var files []fileEntry
+				if off+2 <= len(val) {
+					fileCount := int(binary.BigEndian.Uint16(val[off:]))
+					off += 2
+					for i := 0; i < fileCount; i++ {
+						if off+10 > len(val) {
+							break
+						}
+						fSize := binary.BigEndian.Uint64(val[off:])
+						off += 8
+						pathLen := int(binary.BigEndian.Uint16(val[off:]))
+						off += 2
+						if off+pathLen > len(val) {
+							break
+						}
+						files = append(files, fileEntry{size: fSize, path: val[off : off+pathLen]})
+						off += pathLen
+					}
+				}
 
 				// Write binary dump format
 				out.Write(infohash[:])
@@ -102,6 +133,30 @@ func main() {
 				binary.BigEndian.PutUint16(nameLenBuf[:], uint16(outNameLen))
 				out.Write(nameLenBuf[:])
 				out.Write(name[:outNameLen])
+
+				// Write file count
+				fileCount := len(files)
+				if fileCount > 65535 {
+					fileCount = 65535
+				}
+				var fcBuf [2]byte
+				binary.BigEndian.PutUint16(fcBuf[:], uint16(fileCount))
+				out.Write(fcBuf[:])
+
+				for _, f := range files[:fileCount] {
+					var fSizeBuf [8]byte
+					binary.BigEndian.PutUint64(fSizeBuf[:], f.size)
+					out.Write(fSizeBuf[:])
+
+					pathLen := len(f.path)
+					if pathLen > 65535 {
+						pathLen = 65535
+					}
+					var plBuf [2]byte
+					binary.BigEndian.PutUint16(plBuf[:], uint16(pathLen))
+					out.Write(plBuf[:])
+					out.Write(f.path[:pathLen])
+				}
 
 				count++
 				if count%10000 == 0 {

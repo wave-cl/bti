@@ -6,66 +6,225 @@
 <title>bti - BitTorrent Index</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:20px;max-width:900px;margin:0 auto}
+html,body{height:100%;overflow:hidden}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:20px;max-width:900px;margin:0 auto;display:flex;flex-direction:column}
 h1{font-size:1.5em;margin-bottom:0;color:#fff}
-.topbar{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
-.topbar .info{font-size:.85em;color:#888}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+.topbar-left{display:flex;flex-direction:column;gap:6px}
+.topbar .info{font-size:.85em;color:#888;text-align:right}
 .topbar .info b{color:#4fc3f7}
-.sync-dot{font-size:.7em;vertical-align:middle;margin-right:3px}
+.sync-row{display:flex;align-items:center;gap:7px}
+.sync-dot{font-size:.75em}
 .sync-connected{color:#4caf50}
 .sync-connecting{color:#ff9800}
-.sync-label{font-size:.75em;color:#666;font-family:monospace}
+.sync-disconnected{color:#f44336}
+.sync-label{font-family:monospace;color:#aaa;font-size:1em}
+.sync-tip{position:relative;cursor:default}
+.sync-tip:hover::after{content:attr(data-tip);position:absolute;left:0;top:1.4em;background:#222;border:1px solid #444;border-radius:4px;padding:5px 10px;white-space:nowrap;color:#ccc;font-size:.85em;z-index:10;pointer-events:none}
 .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-.stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em}
+.stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em;min-width:110px;text-align:center;cursor:pointer;user-select:none;transition:border-color .15s}
+.stat:hover{border-color:#555}
+.stat.active{border-color:#4fc3f7}
 .stat b{display:block;font-size:1.2em;color:#4fc3f7}
 .stat.updated b{animation:pulse .4s ease}
 .info.updated b{animation:pulse .4s ease}
 @keyframes pulse{0%{color:#8ee5ff}100%{color:#4fc3f7}}
-input[type=text]{width:100%;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#fff;font-size:1em;margin-bottom:16px}
-input:focus{outline:none;border-color:#4fc3f7}
-.results{list-style:none}
-.results li{background:#1a1a1a;border:1px solid #222;border-radius:6px;padding:10px 14px;margin-bottom:8px}
-.results .name{color:#fff;font-weight:500}
-.results .meta{font-size:.8em;color:#888;margin-top:4px}
-.tag{display:inline-block;background:#333;border-radius:3px;padding:1px 6px;font-size:.75em;margin-right:4px}
+.search-wrap{position:relative;margin-bottom:16px}
+.search-wrap input[type=text]{width:100%;padding:10px 44px 10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#fff;font-size:1em;margin-bottom:0}
+.search-wrap input:focus{outline:none;border-color:#4fc3f7}
+.search-icons{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:2px;align-items:center}
+.search-icon{background:none;border:none;color:#555;cursor:pointer;font-size:1em;padding:3px 5px;border-radius:4px;line-height:1}
+.search-icon:hover{color:#ccc;background:#2a2a2a}
+.logpane{background:#111;border:1px solid #2a2a2a;border-radius:6px;flex:1;overflow-y:scroll;margin-bottom:40px;font-family:monospace;font-size:.78em;min-height:200px}
+.logpane .entry{display:flex;gap:10px;padding:4px 12px;border-bottom:1px solid #1a1a1a;align-items:baseline;cursor:pointer}
+.logpane .entry:hover{background:#1e1e1e}
+.logpane .entry:first-child{background:#1a1a1a}
+.logpane .entry:first-child:hover{background:#222}
+.logpane .ename{color:#e0e0e0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.logpane .esize{color:#666;white-space:nowrap}
+.logpane .ecat{color:#4fc3f7;white-space:nowrap;min-width:60px}
+.logpane .ehash{color:#444;white-space:nowrap}
+/* Modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:#161616;border:1px solid #2a2a2a;border-radius:10px;padding:24px;max-width:640px;width:100%;position:relative;max-height:90vh;display:flex;flex-direction:column}
+.modal h2{font-size:1.1em;color:#fff;margin-bottom:20px;padding-right:24px;line-height:1.4;font-weight:600}
+.modal .close{position:absolute;top:14px;right:16px;background:none;border:none;color:#555;font-size:1.1em;cursor:pointer}
+.modal .close:hover{color:#fff}
+.modal .row{display:grid;grid-template-columns:100px 1fr;gap:8px;margin-bottom:10px;font-size:.875em;align-items:center}
+.modal .row .label{color:#666;font-weight:500}
+.modal .row .val{color:#ccc;font-family:monospace;word-break:break-all}
+.mcat-badge{display:inline-block;background:#2a1a2a;border:1px solid #5a3a5a;color:#cc88cc;border-radius:4px;padding:2px 8px;font-size:.8em;font-weight:600;font-family:system-ui,sans-serif;letter-spacing:.05em}
+.magnet-row{display:flex;gap:8px;margin-top:16px}
+.magnet-input{flex:1;background:#111;border:1px solid #333;border-radius:6px;padding:8px 12px;color:#888;font-family:monospace;font-size:.75em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.magnet-btn{background:#3a5ab0;border:none;border-radius:6px;padding:8px 16px;color:#fff;font-size:.85em;font-weight:500;cursor:pointer;white-space:nowrap}
+.magnet-btn:hover{background:#4a6ac0}
+.magnet-btn.copied{background:#3a7a3a}
+.files-section{margin-top:20px;overflow:hidden;display:flex;flex-direction:column;flex:1;min-height:0}
+.files-heading{font-size:.875em;font-weight:600;color:#aaa;margin-bottom:8px}
+.files-table{overflow-y:auto;border:1px solid #222;border-radius:6px;flex:1}
+.files-thead{display:grid;grid-template-columns:1fr auto;padding:6px 12px;background:#1e1e1e;border-bottom:1px solid #2a2a2a;font-size:.75em;color:#555;font-weight:600;letter-spacing:.05em;position:sticky;top:0}
+.frow{display:grid;grid-template-columns:1fr auto;padding:6px 12px;border-bottom:1px solid #1a1a1a;font-size:.78em;font-family:monospace}
+.frow:last-child{border-bottom:none}
+.frow:hover{background:#1e1e1e}
+.fname{color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:12px}
+.fsize{color:#555;white-space:nowrap;text-align:right}
 </style>
 </head>
 <body>
-<div class="topbar"><h1>bti</h1><span class="info" id="topinfo"></span></div>
+<div class="topbar"><div class="topbar-left"><h1>bti</h1><div id="syncinfo"></div></div><div class="info" id="topinfo"></div></div>
 <div class="stats" id="stats"></div>
-<input type="text" id="q" placeholder="Search torrents..." autofocus>
-<ul class="results" id="results"></ul>
+<div class="search-wrap">
+  <input type="text" id="q" placeholder="Search torrents..." autofocus>
+  <div class="search-icons">
+    <button class="search-icon" id="btn-refresh" title="Refresh">&#x21BB;</button>
+    <button class="search-icon" id="btn-clear" title="Clear">&#x2715;</button>
+  </div>
+</div>
+<div class="logpane" id="logpane"></div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <button class="close" id="mclose">✕</button>
+    <h2 id="mname"></h2>
+    <div class="row"><span class="label">Category</span><span class="val"><span class="mcat-badge" id="mcat"></span></span></div>
+    <div class="row"><span class="label">Size</span><span class="val" id="msize"></span></div>
+    <div class="row"><span class="label">Infohash</span><span class="val" id="mhash"></span></div>
+    <div class="row"><span class="label">Discovered</span><span class="val" id="mdate"></span></div>
+    <div class="magnet-row">
+      <div class="magnet-input" id="mmagnet-display"></div>
+      <button class="magnet-btn" id="mmagnet-btn">Copy Magnet</button>
+    </div>
+    <div class="files-section" id="mfiles" style="display:none">
+      <div class="files-heading">Files</div>
+      <div class="files-table">
+        <div class="files-thead"><span>PATH</span><span>SIZE</span></div>
+        <div id="mfiles-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const $=s=>document.querySelector(s);
 const fmt=n=>{if(n>=1e12)return(n/1e12).toFixed(1)+'TB';if(n>=1e9)return(n/1e9).toFixed(1)+'GB';if(n>=1e6)return(n/1e6).toFixed(1)+'MB';if(n>=1e3)return(n/1e3).toFixed(1)+'KB';return n+'B'};
 const order=['movie','tv','anime','music','game','software','book','audiobook','course','xxx','other'];
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function timeAgo(ts){const s=Math.floor(Date.now()/1000)-ts;if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
+
 let prev={};
+let activeCat=null;
+let logPaused=false;
+
+function entryHtml(r){
+  return `<div class="entry" data-ih="${r.infohash}" data-name="${esc(r.name)}" data-size="${r.size}" data-cat="${r.category}" data-ts="${r.discovered_at}" data-files='${JSON.stringify(r.files||[])}'><span class="ecat">${r.category}</span><span class="ename">${esc(r.name)}</span><span class="esize">${fmt(r.size)}</span><span class="ehash">${timeAgo(r.discovered_at)}</span></div>`;
+}
+
+function renderLog(entries){
+  $('#logpane').innerHTML=entries.map(entryHtml).join('');
+  document.querySelectorAll('.logpane .entry').forEach(el=>{
+    el.onclick=()=>openModal(el.dataset);
+  });
+}
+
+// Category filter
+function setCat(cat){
+  activeCat=cat;
+  renderStats(lastStats);
+  refresh();
+}
+
+let lastStats=null;
+function renderStats(d){
+  if(!d)return;
+  lastStats=d;
+  let h=`<div class="stat${activeCat===null?' active':''}" data-cat=""><b>${d.total.toLocaleString()}</b>all</div>`;
+  for(const k of order){const v=d.categories?.[k];if(v>0){
+    const ch=prev[k]!==v;
+    h+=`<div class="stat${ch?' updated':''}${activeCat===k?' active':''}" data-cat="${k}"><b>${v.toLocaleString()}</b>${k}</div>`;
+  }}
+  $('#stats').innerHTML=h;
+  document.querySelectorAll('.stat').forEach(el=>{
+    el.onclick=()=>setCat(el.dataset.cat||null);
+  });
+}
+
 function refreshStats(){
   fetch('/api/stats').then(r=>r.json()).then(d=>{
     const ti=$('#topinfo');
     const changed=prev.total!==d.total||prev.db_size!==d.db_size;
-    let info=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> database`;
-    if(d.sync){info+=` &middot; <span class="sync-${d.sync.state} sync-dot">⬤</span><span class="sync-label">${d.sync.label}</span>`}
-    ti.innerHTML=info;
+    ti.innerHTML=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> database`;
+    if(d.sync){
+      let tooltip='';
+      if(d.sync.crawler_total>0)tooltip=`${d.sync.crawler_total.toLocaleString()} torrents · ${fmt(d.sync.crawler_db_size)} db · ${fmt(d.sync.crawler_mem_rss)} mem · ${fmt(d.sync.crawler_disk_used)}/${fmt(d.sync.crawler_disk_total)} disk`;
+      $('#syncinfo').innerHTML=`<div class="sync-row"><span class="sync-dot sync-${d.sync.state}">⬤</span><span class="sync-label sync-tip" data-tip="${tooltip}">sqc://${d.sync.label}</span></div>`;
+    }
     if(changed){ti.classList.remove('updated');void ti.offsetWidth;ti.classList.add('updated')}
-    let h='';
-    for(const k of order){const v=d.categories?.[k];if(v>0){
-      const ch=prev[k]!==v;
-      h+=`<div class="stat${ch?' updated':''}"><b>${v.toLocaleString()}</b>${k}</div>`;
-    }}
-    $('#stats').innerHTML=h;
+    renderStats(d);
     prev={total:d.total,db_size:d.db_size,...d.categories};
   }).catch(()=>{});
 }
+
+function refreshRecent(){
+  if(logPaused)return;
+  const url='/api/recent'+(activeCat?'?category='+activeCat:'');
+  fetch(url).then(r=>r.json()).then(d=>{
+    if(logPaused)return;
+    renderLog(d);
+  }).catch(()=>{});
+}
+
+function doSearch(){
+  const q=$('#q').value.trim();
+  if(!q){refreshRecent();return}
+  const url='/api/search?q='+encodeURIComponent(q)+'&limit=50'+(activeCat?'&category='+activeCat:'');
+  fetch(url).then(r=>r.json()).then(d=>renderLog(d)).catch(()=>{});
+}
+
+function refresh(){
+  const q=$('#q').value.trim();
+  if(q) doSearch(); else refreshRecent();
+}
+
+const logpane=$('#logpane');
+logpane.addEventListener('mouseenter',()=>logPaused=true);
+logpane.addEventListener('mouseleave',()=>logPaused=false);
+
+$('#btn-refresh').onclick=()=>refresh();
+$('#btn-clear').onclick=()=>{$('#q').value='';refreshRecent();$('#q').focus()};
+
+let t;$('#q').oninput=()=>{clearTimeout(t);t=setTimeout(doSearch,300)};
+
+// Modal
+function openModal(data){
+  $('#mname').textContent=data.name;
+  $('#mcat').textContent=data.cat;
+  $('#msize').textContent=fmt(parseInt(data.size));
+  $('#mhash').textContent=data.ih;
+  $('#mdate').textContent=new Date(parseInt(data.ts)*1000).toLocaleString();
+  const magnet=`magnet:?xt=urn:btih:${data.ih}&dn=${encodeURIComponent(data.name)}`;
+  $('#mmagnet-display').textContent=magnet;
+  const mb=$('#mmagnet-btn');
+  mb.textContent='Copy Magnet';
+  mb.className='magnet-btn';
+  mb.onclick=()=>{navigator.clipboard.writeText(magnet).then(()=>{mb.textContent='Copied!';mb.classList.add('copied');setTimeout(()=>{mb.textContent='Copy Magnet';mb.classList.remove('copied')},1500)})};
+  let files=[];
+  try{files=JSON.parse(data.files||'[]')}catch(e){}
+  const mf=$('#mfiles');
+  if(files.length>0){
+    mf.style.display='';
+    $('#mfiles-body').innerHTML=files.map(f=>`<div class="frow"><span class="fname">${esc(f.path)}</span><span class="fsize">${fmt(f.size)}</span></div>`).join('');
+  }else{mf.style.display='none'}
+  $('#overlay').classList.add('open');
+}
+$('#mclose').onclick=()=>$('#overlay').classList.remove('open');
+$('#overlay').onclick=e=>{if(e.target===$('#overlay'))$('#overlay').classList.remove('open')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#overlay').classList.remove('open')});
+
 refreshStats();
+refreshRecent();
 setInterval(refreshStats,5000);
-let t;$('#q').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{
-  const q=e.target.value.trim();if(!q){$('#results').innerHTML='';return}
-  fetch('/api/search?q='+encodeURIComponent(q)+'&limit=50').then(r=>r.json()).then(d=>{
-    $('#results').innerHTML=d.map(r=>`<li><div class="name">${esc(r.name)}</div><div class="meta"><span class="tag">${r.category}</span>${fmt(r.size)} &middot; ${r.infohash.slice(0,12)}...</div></li>`).join('');
-  });
-},300)};
-function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+setInterval(()=>{if(!$('#q').value.trim())refreshRecent()},5000);
 </script>
 </body>
 </html>
