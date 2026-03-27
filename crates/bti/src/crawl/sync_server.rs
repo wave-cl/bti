@@ -86,6 +86,7 @@ async fn handle_sync_connection(
     send.finish()?;
 
     info!("sync complete: sent {} entries to {}", entries.len(), conn.remote_address());
+    conn.closed().await;
     Ok(())
 }
 
