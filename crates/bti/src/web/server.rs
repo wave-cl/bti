@@ -139,6 +139,7 @@ struct SearchResult {
 #[derive(serde::Deserialize)]
 struct RecentQuery {
     category: Option<String>,
+    offset: Option<usize>,
 }
 
 async fn api_recent(
@@ -153,7 +154,8 @@ async fn api_recent(
     });
 
     let cat_filter_u8 = cat_filter.map(|c| c as u8);
-    let entries = storage::recent_entries(&rtx, 50, cat_filter_u8)
+    let offset = params.offset.unwrap_or(0);
+    let entries = storage::recent_entries(&rtx, 50, offset, cat_filter_u8)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let results = entries

@@ -290,16 +290,19 @@ pub fn latest_timestamp(rtx: &ReadTransaction) -> Result<u32, Error> {
 }
 
 /// Get the N most recently discovered entries (newest first), optionally filtered by category.
+/// `offset` skips the first N matching entries (for pagination).
 /// When cat_filter is Some, scans the full TIME_INDEX until N matching entries are found.
 pub fn recent_entries(
     rtx: &ReadTransaction,
     n: usize,
+    offset: usize,
     cat_filter: Option<u8>,
 ) -> Result<Vec<(InfoHash, TorrentEntry)>, Error> {
     let ti = rtx.open_table(TIME_INDEX)?;
     let torrents = rtx.open_table(TORRENTS)?;
     let cats = cat_filter.map(|_| rtx.open_table(CATEGORIES)).transpose()?;
     let mut results = Vec::with_capacity(n);
+    let mut skipped = 0usize;
 
     for item in ti.range::<&[u8; 24]>(..)?.rev() {
         if results.len() >= n {
@@ -318,6 +321,11 @@ pub fn recent_entries(
             if entry_cat != filter {
                 continue;
             }
+        }
+
+        if skipped < offset {
+            skipped += 1;
+            continue;
         }
 
         if let Some(data) = torrents.get(&infohash)? {
