@@ -119,10 +119,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn parse_key(hex_str: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
-    let bytes = hex::decode(hex_str)?;
+fn parse_key(s: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    let bytes = if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        hex::decode(s)?
+    } else {
+        bs58::decode(s).into_vec()?
+    };
     if bytes.len() != 32 {
-        return Err("key must be 32 bytes (64 hex chars)".into());
+        return Err("key must be 32 bytes (64 hex chars or base58)".into());
     }
     let mut key = [0u8; 32];
     key.copy_from_slice(&bytes);
