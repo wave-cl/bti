@@ -35,6 +35,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout squic-rust
+        uses: actions/checkout@v4
+        with:
+          repository: wave-cl/squic-rust
+          path: ../../squic-rust
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
