@@ -4,6 +4,7 @@ pub mod search;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU8;
 use std::sync::Arc;
 
 use tracing::info;
@@ -31,13 +32,22 @@ pub async fn run(config: WebConfig) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Mode 2: sync from remote crawler
-    if let Some((addr, key)) = config.sync_target {
+    let (sync_status, sync_info) = if let Some((addr, key)) = config.sync_target {
         info!("starting sync from {}", addr);
+        let status = Arc::new(AtomicU8::new(0));
+        let pubkey_b58 = bs58::encode(&key).into_string();
+        let label = format!("{}/{}", addr, pubkey_b58);
+
         let sync_db = db.clone();
+        let sync_status_clone = status.clone();
         tokio::spawn(async move {
-            sync_child::run_sync_loop(addr, &key, sync_db).await;
+            sync_child::run_sync_loop(addr, &key, sync_db, sync_status_clone).await;
         });
-    }
+
+        (Some(status), Some(label))
+    } else {
+        (None, None)
+    };
 
     // Always run classifier
     let classify_db = db.clone();
@@ -46,7 +56,7 @@ pub async fn run(config: WebConfig) -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Start HTTP server
-    server::run_server(config.listen, db, config.db_path.clone()).await?;
+    server::run_server(config.listen, db, config.db_path.clone(), sync_status, sync_info).await?;
 
     Ok(())
 }

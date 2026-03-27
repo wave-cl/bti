@@ -11,6 +11,10 @@ h1{font-size:1.5em;margin-bottom:0;color:#fff}
 .topbar{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
 .topbar .info{font-size:.85em;color:#888}
 .topbar .info b{color:#4fc3f7}
+.sync-dot{font-size:.7em;vertical-align:middle;margin-right:3px}
+.sync-connected{color:#4caf50}
+.sync-connecting{color:#ff9800}
+.sync-label{font-size:.75em;color:#666;font-family:monospace}
 .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
 .stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em}
 .stat b{display:block;font-size:1.2em;color:#4fc3f7}
@@ -40,7 +44,9 @@ function refreshStats(){
   fetch('/api/stats').then(r=>r.json()).then(d=>{
     const ti=$('#topinfo');
     const changed=prev.total!==d.total||prev.db_size!==d.db_size;
-    ti.innerHTML=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> database`;
+    let info=`<b>${d.total.toLocaleString()}</b> torrents &middot; <b>${fmt(d.db_size)}</b> database`;
+    if(d.sync){info+=` &middot; <span class="sync-${d.sync.state} sync-dot">⬤</span><span class="sync-label">${d.sync.label}</span>`}
+    ti.innerHTML=info;
     if(changed){ti.classList.remove('updated');void ti.offsetWidth;ti.classList.add('updated')}
     let h='';
     for(const k of order){const v=d.categories?.[k];if(v>0){

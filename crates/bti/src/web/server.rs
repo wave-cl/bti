@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -16,14 +17,18 @@ use tracing::info;
 struct AppState {
     db: Arc<Database>,
     db_path: PathBuf,
+    sync_status: Option<Arc<AtomicU8>>,
+    sync_info: Option<String>,
 }
 
 pub async fn run_server(
     listen: SocketAddr,
     db: Arc<Database>,
     db_path: PathBuf,
+    sync_status: Option<Arc<AtomicU8>>,
+    sync_info: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState { db, db_path };
+    let state = AppState { db, db_path, sync_status, sync_info };
 
     let app = Router::new()
         .route("/", get(index))
@@ -43,10 +48,17 @@ async fn index() -> Html<&'static str> {
 }
 
 #[derive(serde::Serialize)]
+struct SyncInfo {
+    label: String,
+    state: String,
+}
+
+#[derive(serde::Serialize)]
 struct StatsResponse {
     total: u64,
     db_size: u64,
     categories: std::collections::HashMap<String, u64>,
+    sync: Option<SyncInfo>,
 }
 
 async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>, StatusCode> {
@@ -67,7 +79,15 @@ async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>,
         }
     }
 
-    Ok(Json(StatsResponse { total, db_size, categories }))
+    let sync = state.sync_info.as_ref().map(|label| {
+        let state_str = match state.sync_status.as_ref().map(|s| s.load(Ordering::Relaxed)) {
+            Some(2) => "connected",
+            _ => "connecting",
+        };
+        SyncInfo { label: label.clone(), state: state_str.to_string() }
+    });
+
+    Ok(Json(StatsResponse { total, db_size, categories, sync }))
 }
 
 #[derive(serde::Deserialize)]
