@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+env:
+  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/bti
+
 jobs:
   build:
     strategy:
@@ -30,7 +33,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/bti
+          images: ${{ env.IMAGE }}
 
       - name: Build and push by digest
         id: build
@@ -38,9 +41,8 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          push: true
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,scope=${{ matrix.platform }},mode=max
 
@@ -79,7 +81,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/bti
+          images: ${{ env.IMAGE }}
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -88,5 +90,5 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ secrets.DOCKERHUB_USERNAME }}/bti@sha256:%s ' *)
+            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
         working-directory: /tmp/digests
