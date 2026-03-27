@@ -196,7 +196,7 @@ let catDefaultSet=false;
 function renderStats(d){
   if(!d)return;
   lastStats=d;
-  if(!catDefaultSet&&d.categories?.movie>0){catDefaultSet=true;activeCat='movie';refresh();}
+  if(!catDefaultSet){catDefaultSet=true;if(d.categories?.movie>0)activeCat='movie';refresh();}
   let h=`<div class="stat${activeCat===null?' active':''}" data-cat=""><b>${d.total.toLocaleString()}</b>all</div>`;
   for(const k of order){const v=d.categories?.[k];if(v>0){
     const ch=prev[k]!==v;
@@ -320,7 +320,6 @@ if(localStorage.getItem('disclaimer'))$('#disclaimer-overlay').classList.remove(
 $('#disclaimer-btn').onclick=()=>{localStorage.setItem('disclaimer','1');$('#disclaimer-overlay').classList.remove('open')};
 
 refreshStats();
-refreshRecent();
 setInterval(refreshStats,5000);
 setInterval(()=>{if(!$('#q').value.trim()&&!logPaused)refreshRecent(false)},5000);
 </script>
