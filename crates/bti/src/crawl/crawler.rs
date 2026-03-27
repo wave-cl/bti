@@ -514,6 +514,9 @@ fn persist_batch(db: &Database, batch: &mut Vec<MetaResult>, stats: &CrawlerStat
         Ok(wtx) => {
             let mut count = 0u64;
             for item in batch.drain(..) {
+                if item.name.is_empty() {
+                    continue;
+                }
                 let entry = TorrentEntry {
                     name: item.name,
                     size: item.size,

@@ -157,6 +157,28 @@ pub fn put_entry(
     Ok(true)
 }
 
+/// Insert a batch of entries in a single transaction. Returns the count of newly inserted entries.
+/// Opens TORRENTS and TIME_INDEX once for the entire batch.
+pub fn put_entry_batch(
+    wtx: &WriteTransaction,
+    entries: &[(InfoHash, TorrentEntry)],
+) -> Result<u64, Error> {
+    let mut table = wtx.open_table(TORRENTS)?;
+    let mut ti = wtx.open_table(TIME_INDEX)?;
+    let mut inserted = 0u64;
+    for (infohash, entry) in entries {
+        if table.get(infohash)?.is_some() {
+            continue;
+        }
+        let encoded = encode_entry(entry);
+        table.insert(infohash, encoded.as_slice())?;
+        let ti_key = time_index_key(entry.discovered_at, infohash);
+        ti.insert(&ti_key, &[] as &[u8])?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
 /// Check if an infohash exists.
 pub fn has_entry(rtx: &ReadTransaction, infohash: &InfoHash) -> Result<bool, Error> {
     let table = rtx.open_table(TORRENTS)?;

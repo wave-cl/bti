@@ -58,6 +58,10 @@ pub async fn write_sync_entry(
     entry: &TorrentEntry,
 ) -> Result<(), Error> {
     let name_bytes = entry.name.as_bytes();
+    // name_len == 0 is the EOF sentinel — skip nameless entries
+    if name_bytes.is_empty() {
+        return Ok(());
+    }
     let name_len = name_bytes.len().min(u16::MAX as usize) as u16;
     let file_count = entry.files.len().min(u16::MAX as usize) as u16;
 

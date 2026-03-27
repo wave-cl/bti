@@ -69,18 +69,30 @@ async fn sync_once(
     crawler_disk_used.store(h.disk_used, Ordering::Relaxed);
     crawler_disk_total.store(h.disk_total, Ordering::Relaxed);
 
+    const BATCH_SIZE: usize = 1000;
+    let mut batch: Vec<(bti_core::model::InfoHash, bti_core::model::TorrentEntry)> =
+        Vec::with_capacity(BATCH_SIZE);
     let mut count = 0u64;
+
     loop {
         match bti_core::sync_proto::read_sync_entry(&mut recv).await? {
-            Some((infohash, entry)) => {
-                let wtx = db.begin_write()?;
-                if bti_core::storage::put_entry(&wtx, &infohash, &entry)? {
-                    count += 1;
+            Some(e) => {
+                batch.push(e);
+                if batch.len() >= BATCH_SIZE {
+                    let wtx = db.begin_write()?;
+                    count += bti_core::storage::put_entry_batch(&wtx, &batch)?;
+                    wtx.commit()?;
+                    batch.clear();
                 }
-                wtx.commit()?;
             }
             None => break,
         }
+    }
+
+    if !batch.is_empty() {
+        let wtx = db.begin_write()?;
+        count += bti_core::storage::put_entry_batch(&wtx, &batch)?;
+        wtx.commit()?;
     }
 
     Ok(count)
