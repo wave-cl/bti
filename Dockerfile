@@ -1,14 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM tonistiigi/xx AS xx
 
-FROM --platform=$BUILDPLATFORM rust:1-alpine AS builder
+# Build stage — runs under QEMU for non-native platforms (e.g. arm64 on amd64 CI)
+FROM rust:1-alpine AS builder
 
-COPY --from=xx /usr/bin/xx-* /usr/bin/
-ARG TARGETPLATFORM
-
-# Build dependencies
 RUN apk add --no-cache git musl-dev
-RUN xx-apk add --no-cache musl-dev gcc
 
 # squic-rust is a sibling workspace dependency (path = "../../../squic-rust" from crates/bti)
 RUN git clone --depth 1 https://github.com/wave-cl/squic-rust.git /squic-rust
@@ -16,22 +11,20 @@ RUN git clone --depth 1 https://github.com/wave-cl/squic-rust.git /squic-rust
 WORKDIR /build
 COPY . .
 
-# Add Rust target for cross-compilation and build
-RUN rustup target add "$(xx-info rust-target)"
-RUN xx-cargo build --release --locked
-RUN cp "target/$(xx-info rust-target)/release/bti" /bti && xx-verify /bti
+RUN cargo build --release --locked
+RUN cp target/release/bti /bti
 
-# Minimal user/group files (UID/GID 6880 matches the sQUIC port — memorable)
+# Minimal user/group (UID/GID 6880)
 RUN printf 'bti:x:6880:6880:bti:/:/sbin/nologin\n' > /tmp/passwd && \
     printf 'bti:x:6880:\n' > /tmp/group
 
-# Assemble root-fs in a single layer before copying to scratch
+# Assemble root-fs in a single layer
 FROM --platform=$BUILDPLATFORM alpine AS rootfs
-COPY --from=builder /bti       /rootfs/bti
+COPY --from=builder /bti        /rootfs/bti
 COPY --from=builder /tmp/passwd /rootfs/etc/passwd
 COPY --from=builder /tmp/group  /rootfs/etc/group
 
-# Final minimal image
+# Final minimal scratch image
 FROM scratch
 COPY --from=rootfs /rootfs /
 
