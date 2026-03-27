@@ -19,7 +19,7 @@ RUN printf 'bti:x:6880:6880:bti:/:/sbin/nologin\n' > /tmp/passwd && \
     printf 'bti:x:6880:\n' > /tmp/group
 
 # Assemble root-fs in a single layer
-FROM --platform=$BUILDPLATFORM alpine AS rootfs
+FROM alpine AS rootfs
 COPY --from=builder /bti        /rootfs/bti
 COPY --from=builder /tmp/passwd /rootfs/etc/passwd
 COPY --from=builder /tmp/group  /rootfs/etc/group
