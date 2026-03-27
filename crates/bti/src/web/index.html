@@ -10,19 +10,19 @@
 html,body{height:100%;overflow:hidden}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:20px;max-width:1024px;margin:0 auto;display:flex;flex-direction:column}
 h1{font-size:1.5em;margin-bottom:0;color:#fff}
-.topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
-.topbar-left{display:flex;flex-direction:column;gap:6px}
-.topbar .info{font-size:.85em;color:#888;text-align:right}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px}
+.topbar-left{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.topbar .info{font-size:.85em;color:#888;text-align:right;white-space:nowrap}
 .topbar .info b{color:#4fc3f7}
-.sync-row{display:flex;align-items:center;gap:7px}
-.sync-dot{font-size:.75em}
+.sync-row{display:flex;align-items:center;gap:7px;min-width:0}
+.sync-dot{font-size:.75em;flex-shrink:0}
 .sync-connected{color:#4caf50}
 .sync-connecting{color:#ff9800}
 .sync-disconnected{color:#f44336}
-.sync-label{font-family:monospace;color:#aaa;font-size:1em}
+.sync-label{font-family:monospace;color:#aaa;font-size:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sync-tip{position:relative;cursor:default}
 .sync-tip:hover::after{content:attr(data-tip);position:absolute;left:0;top:1.4em;background:#222;border:1px solid #444;border-radius:4px;padding:5px 10px;white-space:nowrap;color:#ccc;font-size:.85em;z-index:10;pointer-events:none}
-.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;justify-content:center}
 .stat{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:.85em;min-width:110px;text-align:center;cursor:pointer;user-select:none;transition:border-color .15s}
 .stat:hover{border-color:#555}
 .stat.active{border-color:#4fc3f7}
@@ -36,7 +36,7 @@ h1{font-size:1.5em;margin-bottom:0;color:#fff}
 .search-icons{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:2px;align-items:center}
 .search-icon{background:none;border:none;color:#555;cursor:pointer;font-size:1em;padding:3px 5px;border-radius:4px;line-height:1}
 .search-icon:hover{color:#ccc;background:#2a2a2a}
-.logpane{background:#111;border:1px solid #2a2a2a;border-radius:6px;flex:1;overflow-y:scroll;margin-bottom:40px;font-family:monospace;font-size:.78em;min-height:200px}
+.logpane{background:#111;border:1px solid #2a2a2a;border-radius:6px;flex:1;overflow-y:scroll;margin-bottom:40px;font-family:monospace;font-size:.88em;min-height:200px}
 .logpane .entry{display:flex;gap:10px;padding:4px 12px;border-bottom:1px solid #1a1a1a;align-items:baseline;cursor:pointer}
 .logpane .entry:hover{background:#1e1e1e}
 .logpane .entry:first-child{background:#1a1a1a}
@@ -46,10 +46,17 @@ h1{font-size:1.5em;margin-bottom:0;color:#fff}
 .logpane .ecat{color:#4fc3f7;white-space:nowrap;min-width:60px}
 .logpane .ehash{color:#444;white-space:nowrap}
 /* Modal */
-.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:flex-start;justify-content:center;padding:60px 20px 60px}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:flex-start;justify-content:center;padding:60px 20px;overflow-y:auto}
 .overlay.open{display:flex}
 #disclaimer-overlay{background:rgba(0,0,0,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center}
 .modal{background:#111;border:1px solid #2a2a2a;border-radius:6px;padding:20px;max-width:640px;width:100%;position:relative;max-height:calc(100vh - 120px);display:flex;flex-direction:column}
+@media(max-width:600px){
+  body{padding:14px}
+  .topbar{flex-wrap:wrap}
+  .topbar .info{font-size:.78em;text-align:left;white-space:normal}
+  .overlay{padding:16px 10px;align-items:flex-start}
+  .modal{max-height:none;max-width:100%}
+}
 .modal h2{font-size:1em;color:#e0e0e0;margin-bottom:16px;padding-right:24px;line-height:1.4;font-weight:600}
 .modal .close{position:absolute;top:12px;right:14px;background:none;border:none;color:#444;font-size:1em;cursor:pointer}
 .modal .close:hover{color:#aaa}
