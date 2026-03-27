@@ -55,7 +55,7 @@ Prints its public key on first run. Note it — web nodes need it to connect.
 **Web node** (anywhere):
 
 ```sh
-bti web --crawler-addr <ip>:6880 --crawler-key <hex_pubkey>
+bti web --crawler-addr <ip>:6880 --crawler-key <pubkey>
 ```
 
 Syncs metadata from the crawler over sQUIC and serves the UI at `:8080`.
@@ -69,12 +69,10 @@ bti crawl
 bti web
   --crawl               Run crawler in-process
   --crawler-addr <addr> Remote crawler address (requires --crawler-key)
-  --crawler-key <hex>   Crawler Ed25519 public key (hex)
-  --db-path <path>      Database path (default: ~/.bti/db)
+  --crawler-key <key>   Crawler Ed25519 public key (base58)
   --listen <addr>       HTTP listen address (default: 0.0.0.0:8080)
 
 bti compact             Reclaim disk space in the database
-bti reclassify          Re-run classifier on all entries
 ```
 
 ## Environment variables
@@ -83,14 +81,12 @@ bti reclassify          Re-run classifier on all entries
 |----------|---------|-------------|
 | `BTI_DB_PATH` | `~/.bti/db` | Database file path |
 | `SYNC_ADDR` | `0.0.0.0:6880` | sQUIC sync listen address |
-| `SYNC_KEY_FILE` | `~/.bti/sync.key` | Ed25519 key file (auto-generated) |
 | `DHT_PORT` | `6881` | DHT UDP listen port |
-| `LOG_LEVEL` | `info` | Log level |
 
 ## Ports
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 6881 | UDP | DHT network |
-| 6880 | UDP/QUIC | sQUIC sync server |
+| 6880 | UDP/QUIC | sQUIC sync |
 | 8080 | TCP | Web UI & API |

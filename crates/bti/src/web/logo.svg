@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 36">
+  <!-- Icon: DHT network triangle -->
+  <!-- Edges -->
+  <line x1="18" y1="4" x2="32" y2="30" stroke="#4fc3f7" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="18" y1="4" x2="4" y2="30" stroke="#4fc3f7" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="4" y1="30" x2="32" y2="30" stroke="#4fc3f7" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <!-- Nodes -->
+  <circle cx="18" cy="4" r="3" fill="#4fc3f7"/>
+  <circle cx="32" cy="30" r="3" fill="#4fc3f7"/>
+  <circle cx="4" cy="30" r="3" fill="#4fc3f7"/>
+  <!-- Wordmark -->
+  <text x="44" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="22" font-weight="600" fill="#ffffff" letter-spacing="-0.5">bti</text>
+</svg>

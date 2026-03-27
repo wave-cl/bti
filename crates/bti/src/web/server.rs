@@ -42,6 +42,8 @@ pub async fn run_server(
 
     let app = Router::new()
         .route("/", get(index))
+        .route("/logo.svg", get(logo))
+        .route("/favicon.svg", get(favicon))
         .route("/api/stats", get(api_stats))
         .route("/api/recent", get(api_recent))
         .route("/api/search", get(api_search))
@@ -56,6 +58,20 @@ pub async fn run_server(
 
 async fn index() -> Html<&'static str> {
     Html(include_str!("index.html"))
+}
+
+async fn logo() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "image/svg+xml")
+        .body(axum::body::Body::from(include_str!("logo.svg")))
+        .unwrap()
+}
+
+async fn favicon() -> axum::response::Response {
+    axum::response::Response::builder()
+        .header("content-type", "image/svg+xml")
+        .body(axum::body::Body::from(include_str!("favicon.svg")))
+        .unwrap()
 }
 
 #[derive(serde::Serialize)]
