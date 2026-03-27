@@ -73,7 +73,7 @@ h1{font-size:1.5em;margin-bottom:0;color:#fff}
 </style>
 </head>
 <body>
-<div class="topbar"><div class="topbar-left"><img src="/logo.svg" alt="bti" style="height:28px;display:block"><div id="syncinfo"></div></div><div class="info" id="topinfo"></div></div>
+<div class="topbar"><div class="topbar-left"><img src="/logo.svg" alt="bti" style="height:28px;width:auto;display:block;align-self:flex-start"><div id="syncinfo"></div></div><div class="info" id="topinfo"></div></div>
 <div class="stats" id="stats"></div>
 <div class="search-wrap">
   <input type="text" id="q" placeholder="Search torrents..." autofocus>
@@ -192,7 +192,14 @@ function refreshStats(){
     if(d.sync){
       let tooltip='';
       if(d.sync.crawler_total>0)tooltip=`${d.sync.crawler_total.toLocaleString()} torrents · ${fmt(d.sync.crawler_db_size)} db · ${fmt(d.sync.crawler_mem_rss)} mem · ${fmt(d.sync.crawler_disk_used)}/${fmt(d.sync.crawler_disk_total)} disk`;
-      $('#syncinfo').innerHTML=`<div class="sync-row"><span class="sync-dot sync-${d.sync.state}">⬤</span><span class="sync-label sync-tip" data-tip="${tooltip}">sqc://${d.sync.label}</span></div>`;
+      const syncEl=$('#syncinfo');
+      syncEl.innerHTML=`<div class="sync-row"><span class="sync-dot sync-${d.sync.state}">⬤</span><span id="crawlerlabel" class="sync-label sync-tip" data-tip="${tooltip}" data-magnet="${d.sync.label}" style="cursor:pointer" title="click to copy"><span style="color:#555;margin-right:5px">crawler</span>${d.sync.label}</span></div>`;
+      $('#crawlerlabel').onclick=function(){
+        const txt=this.dataset.magnet;
+        const copy=t=>{const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta)};
+        (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.resolve(copy(txt))).then(()=>{if(!navigator.clipboard)copy(txt)}).catch(()=>copy(txt));
+        const el=this;const prev=el.innerHTML;el.innerHTML='<span style="color:#4fc3f7">copied!</span>';setTimeout(()=>el.innerHTML=prev,1000);
+      };
     }
     if(changed){ti.classList.remove('updated');void ti.offsetWidth;ti.classList.add('updated')}
     renderStats(d);

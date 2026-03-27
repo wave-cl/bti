@@ -42,7 +42,7 @@ pub async fn run(config: WebConfig) -> Result<(), Box<dyn std::error::Error>> {
             let disk_used = Arc::new(AtomicU64::new(0));
             let disk_total = Arc::new(AtomicU64::new(0));
             let pubkey_b58 = bs58::encode(&key).into_string();
-            let label = format!("{}/{}", addr, pubkey_b58);
+            let label = format!("magnet:?xt=urn:sqc:{}", pubkey_b58);
 
             let sync_db = db.clone();
             let sync_status_clone = status.clone();
