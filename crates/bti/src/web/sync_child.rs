@@ -25,9 +25,7 @@ pub async fn run_sync_loop(
         status.store(STATUS_CONNECTING, Ordering::Relaxed);
         match sync_once(crawler_addr, crawler_key, &db, &status, &crawler_db_size, &crawler_total, &crawler_mem_rss, &crawler_disk_used, &crawler_disk_total).await {
             Ok(count) => {
-                if count > 0 {
-                    info!("web sync: {} new entries", count);
-                }
+                info!("web sync: connection closed ({} entries total)", count);
             }
             Err(e) => {
                 error!("web sync error: {}", e);
@@ -35,7 +33,6 @@ pub async fn run_sync_loop(
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
-        status.store(STATUS_CONNECTING, Ordering::Relaxed);
     }
 }
 
@@ -55,7 +52,10 @@ async fn sync_once(
         bti_core::storage::latest_timestamp(&rtx)?
     };
 
-    let conn = squic::dial(crawler_addr, crawler_key, squic::Config::default()).await?;
+    let conn = squic::dial(crawler_addr, crawler_key, squic::Config {
+        keep_alive: Some(Duration::from_secs(10)),
+        ..Default::default()
+    }).await?;
     let (mut send, mut recv) = conn.open_bi().await?;
     status.store(STATUS_CONNECTED, Ordering::Relaxed);
 

@@ -48,6 +48,7 @@ h1{font-size:1.5em;margin-bottom:0;color:#fff}
 /* Modal */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:flex-start;justify-content:center;padding:60px 20px 60px}
 .overlay.open{display:flex}
+#disclaimer-overlay{background:rgba(0,0,0,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center}
 .modal{background:#111;border:1px solid #2a2a2a;border-radius:6px;padding:20px;max-width:640px;width:100%;position:relative;max-height:calc(100vh - 120px);display:flex;flex-direction:column}
 .modal h2{font-size:1em;color:#e0e0e0;margin-bottom:16px;padding-right:24px;line-height:1.4;font-weight:600}
 .modal .close{position:absolute;top:12px;right:14px;background:none;border:none;color:#444;font-size:1em;cursor:pointer}
@@ -103,6 +104,14 @@ h1{font-size:1.5em;margin-bottom:0;color:#fff}
         <div id="mfiles-body"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="overlay open" id="disclaimer-overlay">
+  <div class="modal" style="max-width:480px;gap:16px">
+    <h2 style="font-size:1.1em;color:#e0e0e0">Research Use Only</h2>
+    <p style="font-size:.88em;color:#aaa;line-height:1.6">This tool indexes publicly available torrent metadata from the BitTorrent DHT network for research and informational purposes only. It does not host, store, or distribute any copyrighted content. Data is unfiltered and may include adult or objectionable content. Use of this tool is your own responsibility.</p>
+    <button id="disclaimer-btn" style="align-self:flex-start;background:#222;border:1px solid #333;color:#e0e0e0;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:.88em">I understand</button>
   </div>
 </div>
 
@@ -170,9 +179,11 @@ function setCat(cat){
 }
 
 let lastStats=null;
+let catDefaultSet=false;
 function renderStats(d){
   if(!d)return;
   lastStats=d;
+  if(!catDefaultSet&&d.categories?.movie>0){catDefaultSet=true;activeCat='movie';refresh();}
   let h=`<div class="stat${activeCat===null?' active':''}" data-cat=""><b>${d.total.toLocaleString()}</b>all</div>`;
   for(const k of order){const v=d.categories?.[k];if(v>0){
     const ch=prev[k]!==v;
@@ -291,6 +302,9 @@ function openModal(data){
 $('#mclose').onclick=()=>$('#overlay').classList.remove('open');
 $('#overlay').onclick=e=>{if(e.target===$('#overlay'))$('#overlay').classList.remove('open')};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#overlay').classList.remove('open')});
+
+if(localStorage.getItem('disclaimer'))$('#disclaimer-overlay').classList.remove('open');
+$('#disclaimer-btn').onclick=()=>{localStorage.setItem('disclaimer','1');$('#disclaimer-overlay').classList.remove('open')};
 
 refreshStats();
 refreshRecent();

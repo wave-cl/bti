@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use ed25519_dalek::SigningKey;
 use redb::Database;
@@ -21,7 +22,10 @@ pub async fn run_sync_server(
         hex::encode(pub_key.to_bytes())
     );
 
-    let listener = squic::listen(addr, &signing_key, squic::Config::default()).await?;
+    let listener = squic::listen(addr, &signing_key, squic::Config {
+        keep_alive: Some(Duration::from_secs(10)),
+        ..Default::default()
+    }).await?;
 
     loop {
         let incoming = match listener.accept().await {
@@ -68,23 +72,41 @@ async fn handle_sync_connection(
         db_size, total, mem_rss, disk_used, disk_total,
     }).await?;
 
-    let mut entries = Vec::new();
+    // Send historical entries
+    let mut batch = Vec::new();
     bti_core::storage::entries_since(&rtx, since, |infohash, entry| {
-        entries.push((infohash, entry));
-        entries.len() < 100_000 // cap at 100k per sync
+        batch.push((infohash, entry));
+        true
     })?;
     drop(rtx);
 
-    for (infohash, entry) in &entries {
+    let peer = conn.remote_address();
+    for (infohash, entry) in &batch {
         bti_core::sync_proto::write_sync_entry(&mut send, infohash, entry).await?;
     }
+    info!("sync: sent {} historical entries to {}", batch.len(), peer);
 
-    bti_core::sync_proto::write_sync_eof(&mut send).await?;
-    send.finish()?;
+    // Track cursor as latest timestamp sent
+    let mut cursor = batch.last().map(|(_, e)| e.discovered_at).unwrap_or(since);
 
-    info!("sync complete: sent {} entries to {}", entries.len(), conn.remote_address());
-    conn.closed().await;
-    Ok(())
+    // Persistent push: poll for new entries every 2s
+    loop {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let rtx = db.begin_read()?;
+        let mut new_batch = Vec::new();
+        bti_core::storage::entries_since(&rtx, cursor, |infohash, entry| {
+            new_batch.push((infohash, entry));
+            true
+        })?;
+        drop(rtx);
+
+        for (infohash, entry) in &new_batch {
+            bti_core::sync_proto::write_sync_entry(&mut send, infohash, entry).await?;
+            if entry.discovered_at > cursor {
+                cursor = entry.discovered_at;
+            }
+        }
+    }
 }
 
 fn read_mem_rss() -> u64 {
