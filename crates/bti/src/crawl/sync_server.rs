@@ -72,22 +72,29 @@ async fn handle_sync_connection(
         db_size, total, mem_rss, disk_used, disk_total,
     }).await?;
 
-    // Send historical entries
-    let mut batch = Vec::new();
-    bti_core::storage::entries_since(&rtx, since, |infohash, entry| {
-        batch.push((infohash, entry));
-        true
-    })?;
-    drop(rtx);
-
+    // Stream historical entries in chunks to avoid loading millions of entries into memory
     let peer = conn.remote_address();
-    for (infohash, entry) in &batch {
-        bti_core::sync_proto::write_sync_entry(&mut send, infohash, entry).await?;
+    let mut cursor = since;
+    let mut total_sent = 0usize;
+    const CHUNK: usize = 1000;
+    loop {
+        let mut chunk = Vec::with_capacity(CHUNK);
+        let rtx2 = db.begin_read()?;
+        bti_core::storage::entries_since(&rtx2, cursor, |infohash, entry| {
+            chunk.push((infohash, entry));
+            chunk.len() < CHUNK
+        })?;
+        drop(rtx2);
+        if chunk.is_empty() { break; }
+        for (infohash, entry) in &chunk {
+            bti_core::sync_proto::write_sync_entry(&mut send, infohash, entry).await?;
+            if entry.discovered_at > cursor { cursor = entry.discovered_at; }
+        }
+        total_sent += chunk.len();
+        if chunk.len() < CHUNK { break; }
     }
-    info!("sync: sent {} historical entries to {}", batch.len(), peer);
-
-    // Track cursor as latest timestamp sent
-    let mut cursor = batch.last().map(|(_, e)| e.discovered_at).unwrap_or(since);
+    drop(rtx);
+    info!("sync: sent {} historical entries to {}", total_sent, peer);
 
     // Persistent push: poll for new entries every 2s
     loop {
