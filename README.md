@@ -60,6 +60,21 @@ bti web --crawler-addr <ip>:6880 --crawler-key <pubkey>
 
 Syncs metadata from the crawler over sQUIC and serves the UI at `:8080`.
 
+### Docker
+
+`compose.example.yaml` is a template for running a web node against a remote
+crawler. Copy it and fill in the two crawler values:
+
+```sh
+cp compose.example.yaml compose.yaml
+```
+
+`compose.yaml` itself is gitignored, since it pins one deployment. The address
+is the crawler's `host:6880`, and the key is the public key it prints at
+startup — the same pair `--crawler-addr` and `--crawler-key` take below. A
+wrong key fails the handshake outright rather than degrading, because sQUIC
+pins it.
+
 ## Options
 
 ```
@@ -69,7 +84,7 @@ bti crawl
 bti web
   --crawl               Run crawler in-process
   --crawler-addr <addr> Remote crawler address (requires --crawler-key)
-  --crawler-key <key>   Crawler Ed25519 public key (base58)
+  --crawler-key <key>   Crawler Ed25519 public key (64 hex chars or base58)
   --listen <addr>       HTTP listen address (default: 0.0.0.0:8080)
 
 bti compact             Reclaim disk space in the database
