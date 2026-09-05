@@ -43,10 +43,41 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-# There is deliberately no `cargo fmt --check` job. This repository is not
-# rustfmt-clean, so one would fail on arrival, and reformatting it is a separate
-# decision with a diff of its own — not something to smuggle in with a lint job.
-#
-# There is deliberately no `cargo test` job either. bti has no tests, so one
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Nothing is compiled by this job, but `cargo fmt` still runs
+      # `cargo metadata` to resolve the workspace, and that fails outright if
+      # the path dependency is missing. Hence the same clone as `clippy`, and
+      # no `rust-cache`: there is no build output here worth caching.
+      - name: Checkout squic-rust
+        run: git clone --depth 1 https://github.com/wave-cl/squic-rust.git ../squic-rust
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      # `-p` per package, **not** `--all`. `cargo fmt --all` formats the
+      # workspace *and the path dependencies of its members*, and bti depends
+      # on squic by path — so `--all` reaches into ../squic-rust and checks a
+      # repository this job has no business failing on. Locally it silently
+      # rewrites it; here it would turn bti red whenever squic-rust drifts out
+      # of rustfmt-clean, a failure with no action a bti change could take.
+      #
+      # The package list is derived rather than written out, because a
+      # hand-written one fails silently: add a crate, forget the line, and it
+      # goes unchecked with the job still green. `--no-deps` reports exactly
+      # the workspace members and never the path dependency, which is the set
+      # wanted here. It is echoed so a green run still shows what was covered.
+      - name: Format
+        run: |
+          names=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name')
+          echo "checking:" $names
+          test -n "$names"
+          echo "$names" | xargs -I{} cargo fmt -p {} --check
+
+# There is deliberately no `cargo test` job. bti has no tests, so one
 # would report "0 passed" and a green tick, which is worse than an absent job:
 # it looks like coverage. Add the job with the first test, not before it.
