@@ -1,0 +1,32 @@
+# Template for compose.yaml, which is gitignored because it pins one
+# deployment. Copy it and fill in the two crawler values:
+#
+#   cp compose.example.yaml compose.yaml
+#
+# --crawler-addr is the host:port of the crawler this web instance syncs
+# from. --crawler-key is that crawler's squic public key, which the client
+# pins: it is printed as `pubkey: <hex>` when the crawler's sync server
+# starts. Both are required -- the web instance has no way to discover
+# either, and a wrong key fails the handshake rather than degrading.
+services:
+  bti-web:
+    image: wavecl/bti:latest
+    command:
+      - web
+      - --db-path
+      - /data/db
+      - --crawler-addr
+      - "CRAWLER_HOST:6880"
+      - --crawler-key
+      - "REPLACE_WITH_CRAWLER_PUBKEY_64_HEX"
+    restart: unless-stopped
+    volumes:
+      - bti-web-data:/data
+    ports:
+      - "8080:8080"
+    environment:
+      BTI_DB_PATH: /data/db
+      LOG_LEVEL: info
+
+volumes:
+  bti-web-data:
