@@ -21,11 +21,17 @@ pub struct Server {
     query_timeout: Duration,
 }
 
+/// Told about every node the server hears from, if anybody is listening.
+///
+/// A name rather than the type written out three times: it appears in two
+/// constructors and a field, and the three had to be kept identical by hand.
+pub type NodeDiscovered = Arc<dyn Fn([u8; 20], SocketAddr) + Send + Sync>;
+
 impl Server {
     pub async fn start(
         port: u16,
         responder: Arc<dyn Responder>,
-        on_node_discovered: Option<Arc<dyn Fn([u8; 20], SocketAddr) + Send + Sync>>,
+        on_node_discovered: Option<NodeDiscovered>,
     ) -> std::io::Result<Arc<Self>> {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         let conn = UdpSocket::bind(addr).await?;
@@ -56,7 +62,7 @@ impl Server {
     async fn read_loop(
         &self,
         responder: Arc<dyn Responder>,
-        on_node_discovered: Option<Arc<dyn Fn([u8; 20], SocketAddr) + Send + Sync>>,
+        on_node_discovered: Option<NodeDiscovered>,
     ) {
         let mut buf = vec![0u8; MAX_UDP_SIZE];
         loop {
@@ -104,7 +110,7 @@ impl Server {
         conn: Arc<UdpSocket>,
         responder: Arc<dyn Responder>,
         recv_msg: RecvMsg,
-        on_node_discovered: Option<Arc<dyn Fn([u8; 20], SocketAddr) + Send + Sync>>,
+        on_node_discovered: Option<NodeDiscovered>,
     ) {
         let tx_id = recv_msg.msg.t.clone();
         let from = recv_msg.from;

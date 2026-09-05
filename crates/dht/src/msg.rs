@@ -165,7 +165,9 @@ pub fn parse_msg(data: &[u8]) -> Option<Msg> {
 }
 
 fn parse_compact_nodes(data: &[u8]) -> Vec<NodeInfo> {
-    data.chunks_exact(26)
+    data.as_chunks::<26>()
+        .0
+        .iter()
         .filter_map(|chunk| {
             let mut id = [0u8; 20];
             id.copy_from_slice(&chunk[..20]);
@@ -183,13 +185,7 @@ fn parse_compact_nodes(data: &[u8]) -> Vec<NodeInfo> {
 }
 
 fn parse_compact_infohashes(data: &[u8]) -> Vec<[u8; 20]> {
-    data.chunks_exact(20)
-        .map(|chunk| {
-            let mut hash = [0u8; 20];
-            hash.copy_from_slice(chunk);
-            hash
-        })
-        .collect()
+    data.as_chunks::<20>().0.to_vec()
 }
 
 fn parse_node_addr(data: &[u8]) -> Option<SocketAddr> {
@@ -371,6 +367,7 @@ pub struct EncodeMsgArgs {
     pub implied_port: bool,
 }
 
+#[derive(Default)]
 pub struct EncodeReturn {
     pub id: [u8; 20],
     pub nodes: Vec<NodeInfo>,
@@ -381,16 +378,3 @@ pub struct EncodeReturn {
     pub interval: Option<i64>,
 }
 
-impl Default for EncodeReturn {
-    fn default() -> Self {
-        Self {
-            id: [0; 20],
-            nodes: Vec::new(),
-            token: None,
-            values: Vec::new(),
-            samples: Vec::new(),
-            num: None,
-            interval: None,
-        }
-    }
-}

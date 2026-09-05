@@ -1,4 +1,6 @@
 use std::net::SocketAddr;
+
+use crate::web::CrawlerStats;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -32,13 +34,23 @@ pub async fn run_server(
     db_path: PathBuf,
     sync_status: Option<Arc<AtomicU8>>,
     sync_info: Option<String>,
-    crawler_db_size: Option<Arc<AtomicU64>>,
-    crawler_total: Option<Arc<AtomicU64>>,
-    crawler_mem_rss: Option<Arc<AtomicU64>>,
-    crawler_disk_used: Option<Arc<AtomicU64>>,
-    crawler_disk_total: Option<Arc<AtomicU64>>,
+    crawler: Option<CrawlerStats>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState { db, db_path, sync_status, sync_info, crawler_db_size, crawler_total, crawler_mem_rss, crawler_disk_used, crawler_disk_total };
+    // Expanded into `AppState` here rather than carried as a struct, so the
+    // handlers below are untouched. The grouping exists to stop five
+    // same-typed values being passed positionally between functions; inside
+    // one function, named fields already did that job.
+    let state = AppState {
+        db,
+        db_path,
+        sync_status,
+        sync_info,
+        crawler_db_size: crawler.as_ref().map(|c| c.db_size.clone()),
+        crawler_total: crawler.as_ref().map(|c| c.total.clone()),
+        crawler_mem_rss: crawler.as_ref().map(|c| c.mem_rss.clone()),
+        crawler_disk_used: crawler.as_ref().map(|c| c.disk_used.clone()),
+        crawler_disk_total: crawler.as_ref().map(|c| c.disk_total.clone()),
+    };
 
     let app = Router::new()
         .route("/", get(index))

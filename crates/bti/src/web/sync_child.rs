@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+
+use crate::web::CrawlerStats;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,15 +17,11 @@ pub async fn run_sync_loop(
     crawler_key: &[u8; 32],
     db: Arc<Database>,
     status: Arc<AtomicU8>,
-    crawler_db_size: Arc<AtomicU64>,
-    crawler_total: Arc<AtomicU64>,
-    crawler_mem_rss: Arc<AtomicU64>,
-    crawler_disk_used: Arc<AtomicU64>,
-    crawler_disk_total: Arc<AtomicU64>,
+    stats: CrawlerStats,
 ) {
     loop {
         status.store(STATUS_CONNECTING, Ordering::Relaxed);
-        match sync_once(crawler_addr, crawler_key, &db, &status, &crawler_db_size, &crawler_total, &crawler_mem_rss, &crawler_disk_used, &crawler_disk_total).await {
+        match sync_once(crawler_addr, crawler_key, &db, &status, &stats).await {
             Ok(count) => {
                 info!("web sync: connection closed ({} entries total)", count);
             }
@@ -41,11 +39,7 @@ async fn sync_once(
     crawler_key: &[u8; 32],
     db: &Database,
     status: &AtomicU8,
-    crawler_db_size: &AtomicU64,
-    crawler_total: &AtomicU64,
-    crawler_mem_rss: &AtomicU64,
-    crawler_disk_used: &AtomicU64,
-    crawler_disk_total: &AtomicU64,
+    stats: &CrawlerStats,
 ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     let since = {
         let rtx = db.begin_read()?;
@@ -63,29 +57,24 @@ async fn sync_once(
     send.finish()?;
 
     let h = bti_core::sync_proto::read_sync_header(&mut recv).await?;
-    crawler_db_size.store(h.db_size, Ordering::Relaxed);
-    crawler_total.store(h.total, Ordering::Relaxed);
-    crawler_mem_rss.store(h.mem_rss, Ordering::Relaxed);
-    crawler_disk_used.store(h.disk_used, Ordering::Relaxed);
-    crawler_disk_total.store(h.disk_total, Ordering::Relaxed);
+    stats.db_size.store(h.db_size, Ordering::Relaxed);
+    stats.total.store(h.total, Ordering::Relaxed);
+    stats.mem_rss.store(h.mem_rss, Ordering::Relaxed);
+    stats.disk_used.store(h.disk_used, Ordering::Relaxed);
+    stats.disk_total.store(h.disk_total, Ordering::Relaxed);
 
     const BATCH_SIZE: usize = 1000;
     let mut batch: Vec<(bti_core::model::InfoHash, bti_core::model::TorrentEntry)> =
         Vec::with_capacity(BATCH_SIZE);
     let mut count = 0u64;
 
-    loop {
-        match bti_core::sync_proto::read_sync_entry(&mut recv).await? {
-            Some(e) => {
-                batch.push(e);
-                if batch.len() >= BATCH_SIZE {
-                    let wtx = db.begin_write()?;
-                    count += bti_core::storage::put_entry_batch(&wtx, &batch)?;
-                    wtx.commit()?;
-                    batch.clear();
-                }
-            }
-            None => break,
+    while let Some(e) = bti_core::sync_proto::read_sync_entry(&mut recv).await? {
+        batch.push(e);
+        if batch.len() >= BATCH_SIZE {
+            let wtx = db.begin_write()?;
+            count += bti_core::storage::put_entry_batch(&wtx, &batch)?;
+            wtx.commit()?;
+            batch.clear();
         }
     }
 

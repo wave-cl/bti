@@ -1,13 +1,18 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+/// What the crawler reads from the environment.
+///
+/// **`LOG_LEVEL` is not here, and it does work.** It used to be read into a
+/// field nothing consulted, while `main` read the same variable directly for
+/// the tracing filter — one setting with two owners, only one of which had any
+/// effect. The field is gone; the variable is unchanged.
 pub struct CrawlConfig {
     pub dht_port: u16,
     pub scaling_factor: usize,
     pub db_path: PathBuf,
     pub sync_addr: SocketAddr,
     pub sync_key_file: PathBuf,
-    pub log_level: String,
     pub bootstrap_nodes: Vec<String>,
 }
 
@@ -22,7 +27,6 @@ impl CrawlConfig {
             db_path: env_path_or("BTI_DB_PATH", bti_dir.join("db")),
             sync_addr: env_or("SYNC_ADDR", "0.0.0.0:6880".parse().unwrap()),
             sync_key_file: env_path_or("SYNC_KEY_FILE", bti_dir.join("sync.key")),
-            log_level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".into()),
             bootstrap_nodes: vec![
                 "router.bittorrent.com:6881".into(),
                 "router.utorrent.com:6881".into(),

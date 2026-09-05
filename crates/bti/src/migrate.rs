@@ -83,7 +83,7 @@ pub fn run_migrate(path: &str, db: &Database) -> Result<(), Box<dyn std::error::
         }
 
         batch_count += 1;
-        if batch_count % 10000 == 0 {
+        if batch_count.is_multiple_of(10000) {
             info!("migrated {} entries...", batch_count);
         }
     }

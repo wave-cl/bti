@@ -1,5 +1,11 @@
-// Extension-to-category weight mappings.
-// Not used in name-only classification mode, but available for future file-list support.
+//! Extension-to-category weight mappings.
+//!
+//! **Unused on purpose.** Classification is name-only today, so nothing calls
+//! this; it is kept for file-list support, which is the case it was written
+//! for. The allow is here rather than a deletion because the table is the
+//! knowledge, and rewriting it later from memory would be worse than carrying
+//! it.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use bti_core::model::Category;

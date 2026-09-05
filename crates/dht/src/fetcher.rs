@@ -186,7 +186,7 @@ async fn ex_handshake(stream: &mut TcpStream) -> Result<(u32, u8), FetchError> {
         .and_then(crate::msg::value_to_i64)
         .ok_or_else(|| FetchError::Protocol("missing metadata_size".into()))?;
 
-    if ut_metadata < 1 || ut_metadata > 254 {
+    if !(1..=254).contains(&ut_metadata) {
         return Err(FetchError::Protocol("invalid ut_metadata id".into()));
     }
 
@@ -198,7 +198,7 @@ async fn request_all_pieces(
     metadata_size: u32,
     ut_metadata: u8,
 ) -> Result<(), FetchError> {
-    let pieces = (metadata_size as usize + PIECE_SIZE - 1) / PIECE_SIZE;
+    let pieces = (metadata_size as usize).div_ceil(PIECE_SIZE);
 
     for i in 0..pieces {
         let payload = format!("d8:msg_typei0e5:piecei{}ee", i);

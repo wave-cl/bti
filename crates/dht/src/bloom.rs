@@ -12,8 +12,15 @@ pub struct StableBloomFilter {
 impl StableBloomFilter {
     /// Create a new stable bloom filter.
     /// - `capacity`: approximate number of items to track
-    /// - `fp_rate`: desired false positive rate (e.g., 0.001)
-    pub fn new(capacity: usize, fp_rate: f64) -> Self {
+    ///
+    /// **There is no false-positive-rate argument, and there was never one that
+    /// worked.** This took an `fp_rate` and ignored it: the sizing below is
+    /// fixed at three hashes and ~2 bytes per item, chosen empirically for
+    /// counter-based decay rather than derived from a target rate. A caller
+    /// passing 0.001 got exactly what a caller passing 0.5 got. Removing the
+    /// argument is the honest half of the fix — a setting that is read and
+    /// never applied looks like it works.
+    pub fn new(capacity: usize) -> Self {
         let num_hashes = 3;
         // ~2 bytes per item gives acceptable FPR with counter-based decay
         let num_cells = (capacity * 2).max(1024);

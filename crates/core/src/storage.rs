@@ -27,7 +27,7 @@ pub fn open_db(path: &Path) -> Result<Database, Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut db = Database::builder()
+    let db = Database::builder()
         .set_cache_size(64 * 1024 * 1024)
         .create(path)?;
 
@@ -82,7 +82,7 @@ pub fn decode_entry(data: &[u8]) -> Result<TorrentEntry, Error> {
     }
     if data[0] == ZSTD_MAGIC {
         let decompressed = zstd::decode_all(&data[1..])
-            .map_err(|e| Error::InvalidData(format!("zstd decompress: {e}").into()))?;
+            .map_err(|e| Error::InvalidData(format!("zstd decompress: {e}")))?;
         decode_entry_raw(&decompressed)
     } else {
         decode_entry_raw(data)

@@ -70,7 +70,7 @@ pub async fn run_crawler(
     let node_id = ktable::random_node_id();
     let ktable = Arc::new(KTable::new(node_id));
     let stats = Arc::new(CrawlerStats::new());
-    let bloom = Arc::new(Mutex::new(StableBloomFilter::new(10_000_000, 0.001)));
+    let bloom = Arc::new(Mutex::new(StableBloomFilter::new(10_000_000)));
     let sf = config.scaling_factor;
 
     // Rotating sought node ID (bt-mcp: rotates every 10s)
@@ -361,7 +361,6 @@ pub async fn run_crawler(
 
     // --- get_peers stage — acquire permit BEFORE spawn (bounded tasks) ---
     let client_gp = client.clone();
-    let stats_gp = stats.clone();
     let bloom_gp = bloom.clone();
     let db_gp = db.clone();
     let peers_tx_gp = peers_tx.clone();
@@ -412,19 +411,18 @@ pub async fn run_crawler(
                 let _permit = permit;
 
                 let mut peers = Vec::new();
-                match client.get_peers(peer, infohash).await {
-                    Ok(result) => {
-                        for v in result.values {
-                            if peers.len() < 10 {
-                                peers.push(v);
-                            }
-                        }
-                        // Feed discovered nodes back
-                        for n in result.nodes {
-                            let _ = disc_tx.try_send(DiscoveredNode { addr: n.addr });
+                // A peer that does not answer is ordinary here, and is the
+                // reason this ignores the error rather than reporting it.
+                if let Ok(result) = client.get_peers(peer, infohash).await {
+                    for v in result.values {
+                        if peers.len() < 10 {
+                            peers.push(v);
                         }
                     }
-                    Err(_) => {}
+                    // Feed discovered nodes back
+                    for n in result.nodes {
+                        let _ = disc_tx.try_send(DiscoveredNode { addr: n.addr });
+                    }
                 }
                 if peers.is_empty() {
                     peers.push(peer);
