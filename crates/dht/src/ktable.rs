@@ -81,14 +81,7 @@ impl KTable {
         next_at: Instant,
     ) {
         let mut inner = self.inner.write().unwrap();
-        Self::put_node_locked(
-            &mut inner,
-            id,
-            addr,
-            true,
-            Some(support),
-            Some(next_at),
-        );
+        Self::put_node_locked(&mut inner, id, addr, true, Some(support), Some(next_at));
     }
 
     fn put_node_locked(
@@ -124,7 +117,11 @@ impl KTable {
         let new_node = KNode {
             id,
             addr,
-            last_responded: if responded { now } else { Instant::now() - std::time::Duration::from_secs(3600) },
+            last_responded: if responded {
+                now
+            } else {
+                Instant::now() - std::time::Duration::from_secs(3600)
+            },
             dropped: false,
             bep51_support: bep51_support.unwrap_or(false),
             bep51_next_at: bep51_next_at.unwrap_or(now),
@@ -185,10 +182,7 @@ impl KTable {
             let db = xor_distance(target, &b.id);
             compare_dist(&da, &db).cmp(&0)
         });
-        live.iter()
-            .take(K)
-            .map(|n| node_from_knode(n))
-            .collect()
+        live.iter().take(K).map(|n| node_from_knode(n)).collect()
     }
 
     pub fn get_oldest_nodes(&self, cutoff: Instant, n: usize) -> Vec<Node> {

@@ -2,8 +2,8 @@ use std::sync::OnceLock;
 
 use bti_core::model::Category;
 
-mod keywords;
 mod extensions;
+mod keywords;
 
 const MIN_SCORE: f64 = 0.3;
 const NUM_CATEGORIES: usize = 11;
@@ -26,7 +26,9 @@ fn disambiguate(name: &str, scores: &mut [f64; NUM_CATEGORIES]) {
 
     // XXX vs Movie: XXX keywords override quality tags
     if scores[xxx] > 0.0 {
-        let max_other = scores.iter().enumerate()
+        let max_other = scores
+            .iter()
+            .enumerate()
             .filter(|&(i, _)| i != xxx)
             .map(|(_, &v)| v)
             .fold(0.0_f64, f64::max);

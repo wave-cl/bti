@@ -22,10 +22,15 @@ pub async fn run_sync_server(
         hex::encode(pub_key.to_bytes())
     );
 
-    let listener = squic::listen(addr, &signing_key, squic::Config {
-        keep_alive: Some(Duration::from_secs(10)),
-        ..Default::default()
-    }).await?;
+    let listener = squic::listen(
+        addr,
+        &signing_key,
+        squic::Config {
+            keep_alive: Some(Duration::from_secs(10)),
+            ..Default::default()
+        },
+    )
+    .await?;
 
     loop {
         let incoming = match listener.accept().await {
@@ -61,16 +66,28 @@ async fn handle_sync_connection(
     let (mut send, mut recv) = conn.accept_bi().await?;
 
     let since = bti_core::sync_proto::read_sync_request(&mut recv).await?;
-    info!("sync request from {}: since={}", conn.remote_address(), since);
+    info!(
+        "sync request from {}: since={}",
+        conn.remote_address(),
+        since
+    );
 
     let rtx = db.begin_read()?;
     let db_size = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
     let total = bti_core::storage::count(&rtx)?;
     let mem_rss = read_mem_rss();
     let (disk_used, disk_total) = disk_usage(&db_path);
-    bti_core::sync_proto::write_sync_header(&mut send, &bti_core::sync_proto::SyncHeader {
-        db_size, total, mem_rss, disk_used, disk_total,
-    }).await?;
+    bti_core::sync_proto::write_sync_header(
+        &mut send,
+        &bti_core::sync_proto::SyncHeader {
+            db_size,
+            total,
+            mem_rss,
+            disk_used,
+            disk_total,
+        },
+    )
+    .await?;
 
     // Stream historical entries in chunks to avoid loading millions of entries into memory
     let peer = conn.remote_address();
@@ -85,13 +102,19 @@ async fn handle_sync_connection(
             chunk.len() < CHUNK
         })?;
         drop(rtx2);
-        if chunk.is_empty() { break; }
+        if chunk.is_empty() {
+            break;
+        }
         for (infohash, entry) in &chunk {
             bti_core::sync_proto::write_sync_entry(&mut send, infohash, entry).await?;
-            if entry.discovered_at > cursor { cursor = entry.discovered_at; }
+            if entry.discovered_at > cursor {
+                cursor = entry.discovered_at;
+            }
         }
         total_sent += chunk.len();
-        if chunk.len() < CHUNK { break; }
+        if chunk.len() < CHUNK {
+            break;
+        }
     }
     drop(rtx);
     info!("sync: sent {} historical entries to {}", total_sent, peer);

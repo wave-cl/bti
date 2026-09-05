@@ -74,7 +74,8 @@ impl StableBloomFilter {
             seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
         ]);
         for i in 0..self.decay_count {
-            let idx = ((base.wrapping_add(i as u64).wrapping_mul(0x517cc1b727220a95)) % self.num_cells as u64) as usize;
+            let idx = ((base.wrapping_add(i as u64).wrapping_mul(0x517cc1b727220a95))
+                % self.num_cells as u64) as usize;
             if self.cells[idx] > 0 {
                 self.cells[idx] -= 1;
             }

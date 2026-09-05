@@ -74,14 +74,21 @@ impl MetadataFetcher {
             return Err(FetchError::Protocol("invalid metadata size".into()));
         }
 
-        trace!("fetching metadata from {}: size={} ut_id={}", addr, metadata_size, ut_metadata_id);
+        trace!(
+            "fetching metadata from {}: size={} ut_id={}",
+            addr,
+            metadata_size,
+            ut_metadata_id
+        );
 
         request_all_pieces(&mut stream, metadata_size, ut_metadata_id).await?;
 
-        let metadata = read_all_pieces(&mut stream, metadata_size).await.map_err(|e| {
-            trace!("read_all_pieces failed for {}: {}", addr, e);
-            e
-        })?;
+        let metadata = read_all_pieces(&mut stream, metadata_size)
+            .await
+            .map_err(|e| {
+                trace!("read_all_pieces failed for {}: {}", addr, e);
+                e
+            })?;
 
         let hash: [u8; 20] = Sha1::digest(&metadata).into();
         if hash != info_hash {
@@ -92,10 +99,7 @@ impl MetadataFetcher {
     }
 }
 
-async fn bt_handshake(
-    stream: &mut TcpStream,
-    info_hash: &[u8; 20],
-) -> Result<(), FetchError> {
+async fn bt_handshake(stream: &mut TcpStream, info_hash: &[u8; 20]) -> Result<(), FetchError> {
     let peer_id = *b"-BT0000-bti000000000";
 
     // Send handshake: protocol + extension bits + infohash + peer_id
@@ -109,10 +113,7 @@ async fn bt_handshake(
 
     // Read response (68 bytes)
     let mut resp = [0u8; 68];
-    stream
-        .read_exact(&mut resp)
-        .await
-        .map_err(FetchError::Io)?;
+    stream.read_exact(&mut resp).await.map_err(FetchError::Io)?;
 
     // Verify protocol string
     if &resp[..20] != BT_PROTOCOL {
@@ -128,7 +129,9 @@ async fn bt_handshake(
     let mut resp_hash = [0u8; 20];
     resp_hash.copy_from_slice(&resp[28..48]);
     if resp_hash != *info_hash {
-        return Err(FetchError::Protocol("infohash mismatch in handshake".into()));
+        return Err(FetchError::Protocol(
+            "infohash mismatch in handshake".into(),
+        ));
     }
 
     Ok(())
@@ -151,31 +154,44 @@ async fn ex_handshake(stream: &mut TcpStream) -> Result<(u32, u8), FetchError> {
     let resp = read_ex_message(stream).await?;
 
     if resp.len() < 2 {
-        return Err(FetchError::Protocol("ex_handshake response too short".into()));
+        return Err(FetchError::Protocol(
+            "ex_handshake response too short".into(),
+        ));
     }
 
     // resp[0] = 20 (extended msg), resp[1] = ext_id (should be 0 for handshake)
     let payload = &resp[2..];
-    let val: bt_bencode::Value =
-        bt_bencode::from_slice(payload).map_err(|e| {
-            trace!("bad bencode in ex_handshake: {:?}, first 100 bytes: {:?}", e, &payload[..payload.len().min(100)]);
-            FetchError::Protocol("bad bencode".into())
-        })?;
+    let val: bt_bencode::Value = bt_bencode::from_slice(payload).map_err(|e| {
+        trace!(
+            "bad bencode in ex_handshake: {:?}, first 100 bytes: {:?}",
+            e,
+            &payload[..payload.len().min(100)]
+        );
+        FetchError::Protocol("bad bencode".into())
+    })?;
 
-    let m = val
-        .get("m")
-        .ok_or_else(|| {
-            trace!("no 'm' key in ex_handshake response, keys: {:?}",
-                val.as_dict().map(|d| d.keys().map(|k| String::from_utf8_lossy(k.as_slice()).to_string()).collect::<Vec<_>>()));
-            FetchError::Protocol("missing m dict".into())
-        })?;
+    let m = val.get("m").ok_or_else(|| {
+        trace!(
+            "no 'm' key in ex_handshake response, keys: {:?}",
+            val.as_dict().map(|d| d
+                .keys()
+                .map(|k| String::from_utf8_lossy(k.as_slice()).to_string())
+                .collect::<Vec<_>>())
+        );
+        FetchError::Protocol("missing m dict".into())
+    })?;
     let ut_metadata = m
         .get("ut_metadata")
         .and_then(crate::msg::value_to_i64)
         .ok_or_else(|| {
-            trace!("ut_metadata lookup failed. m keys: {:?}, raw get: {:?}",
-                m.as_dict().map(|d| d.keys().map(|k| String::from_utf8_lossy(k.as_slice()).to_string()).collect::<Vec<_>>()),
-                m.get("ut_metadata"));
+            trace!(
+                "ut_metadata lookup failed. m keys: {:?}, raw get: {:?}",
+                m.as_dict().map(|d| d
+                    .keys()
+                    .map(|k| String::from_utf8_lossy(k.as_slice()).to_string())
+                    .collect::<Vec<_>>()),
+                m.get("ut_metadata")
+            );
             FetchError::Protocol("missing ut_metadata".into())
         })?;
 
@@ -249,8 +265,13 @@ async fn read_all_pieces(
         metadata[offset..offset + piece_data.len()].copy_from_slice(piece_data);
         received += piece_data.len();
 
-        trace!("received piece {} ({} bytes, total {}/{})",
-            piece_dict.piece, piece_data.len(), received, metadata_size);
+        trace!(
+            "received piece {} ({} bytes, total {}/{})",
+            piece_dict.piece,
+            piece_data.len(),
+            received,
+            metadata_size
+        );
     }
 
     Ok(metadata)
@@ -264,12 +285,12 @@ struct PieceDict {
 fn parse_piece_dict(data: &[u8]) -> Result<(usize, PieceDict), FetchError> {
     // Find the exact end of the bencode dict by scanning the raw bytes.
     // We can't re-encode because key ordering may differ.
-    let dict_end = bencode_end(data)
-        .ok_or_else(|| FetchError::Protocol("malformed piece bencode".into()))?;
+    let dict_end =
+        bencode_end(data).ok_or_else(|| FetchError::Protocol("malformed piece bencode".into()))?;
 
     let dict_bytes = &data[..dict_end];
-    let val: bt_bencode::Value =
-        bt_bencode::from_slice(dict_bytes).map_err(|_| FetchError::Protocol("bad piece bencode".into()))?;
+    let val: bt_bencode::Value = bt_bencode::from_slice(dict_bytes)
+        .map_err(|_| FetchError::Protocol("bad piece bencode".into()))?;
 
     let msg_type = val
         .get("msg_type")
@@ -365,10 +386,7 @@ async fn read_message(stream: &mut TcpStream) -> Result<Vec<u8>, FetchError> {
     }
 
     let mut buf = vec![0u8; len];
-    stream
-        .read_exact(&mut buf)
-        .await
-        .map_err(FetchError::Io)?;
+    stream.read_exact(&mut buf).await.map_err(FetchError::Io)?;
 
     Ok(buf)
 }
@@ -410,7 +428,10 @@ fn parse_meta_info(data: &[u8]) -> Result<MetainfoResult, FetchError> {
     if let Some(length) = val.get("length").and_then(crate::msg::value_to_i64) {
         let size = length as u64;
         return Ok(MetainfoResult {
-            files: vec![FileEntry { path: name.clone(), size }],
+            files: vec![FileEntry {
+                path: name.clone(),
+                size,
+            }],
             name,
             size,
         });
@@ -421,14 +442,22 @@ fn parse_meta_info(data: &[u8]) -> Result<MetainfoResult, FetchError> {
     let mut files = Vec::new();
     if let Some(file_list) = val.get("files").and_then(|v| v.as_array()) {
         for f in file_list {
-            let length = f.get("length").and_then(crate::msg::value_to_i64).unwrap_or(0) as u64;
+            let length = f
+                .get("length")
+                .and_then(crate::msg::value_to_i64)
+                .unwrap_or(0) as u64;
             total_size += length;
             // path is a list of path components
-            let path = f.get("path")
+            let path = f
+                .get("path")
                 .and_then(|p| p.as_array())
                 .map(|parts| {
-                    parts.iter()
-                        .filter_map(|p| p.as_byte_str().map(|b| String::from_utf8_lossy(b.as_slice()).into_owned()))
+                    parts
+                        .iter()
+                        .filter_map(|p| {
+                            p.as_byte_str()
+                                .map(|b| String::from_utf8_lossy(b.as_slice()).into_owned())
+                        })
                         .collect::<Vec<_>>()
                         .join("/")
                 })
@@ -439,7 +468,11 @@ fn parse_meta_info(data: &[u8]) -> Result<MetainfoResult, FetchError> {
         }
     }
 
-    Ok(MetainfoResult { name, size: total_size, files })
+    Ok(MetainfoResult {
+        name,
+        size: total_size,
+        files,
+    })
 }
 
 #[derive(Debug, thiserror::Error)]

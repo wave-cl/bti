@@ -42,10 +42,7 @@ pub async fn run_classifier_loop(db: Arc<Database>) {
     }
 }
 
-fn classify_batch(
-    db: &Database,
-    cursor: &mut [u8; 24],
-) -> Result<u64, Box<dyn std::error::Error>> {
+fn classify_batch(db: &Database, cursor: &mut [u8; 24]) -> Result<u64, Box<dyn std::error::Error>> {
     let rtx = db.begin_read()?;
     let mut entries = Vec::with_capacity(BATCH_SIZE);
     let mut last_cursor = *cursor;
@@ -119,8 +116,31 @@ fn tokenize(name: &str) -> Vec<String> {
 fn is_stopword(word: &str) -> bool {
     matches!(
         word,
-        "the" | "and" | "for" | "are" | "but" | "not" | "you" | "all" | "can" | "had"
-            | "her" | "was" | "one" | "our" | "out" | "has" | "have" | "from" | "with"
-            | "this" | "that" | "what" | "www" | "com" | "org" | "net"
+        "the"
+            | "and"
+            | "for"
+            | "are"
+            | "but"
+            | "not"
+            | "you"
+            | "all"
+            | "can"
+            | "had"
+            | "her"
+            | "was"
+            | "one"
+            | "our"
+            | "out"
+            | "has"
+            | "have"
+            | "from"
+            | "with"
+            | "this"
+            | "that"
+            | "what"
+            | "www"
+            | "com"
+            | "org"
+            | "net"
     )
 }

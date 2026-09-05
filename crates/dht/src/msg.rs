@@ -78,7 +78,9 @@ impl RecvMsg {
 // ── Bencode helpers using str-based indexing ──
 
 fn get_bytes<'a>(val: &'a Value, key: &str) -> Option<&'a [u8]> {
-    val.get(key).and_then(|v| v.as_byte_str()).map(|b| b.as_slice())
+    val.get(key)
+        .and_then(|v| v.as_byte_str())
+        .map(|b| b.as_slice())
 }
 
 fn get_id(val: &Value, key: &str) -> Option<[u8; 20]> {
@@ -377,4 +379,3 @@ pub struct EncodeReturn {
     pub num: Option<i64>,
     pub interval: Option<i64>,
 }
-

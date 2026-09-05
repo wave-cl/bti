@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use redb::{Database, ReadTransaction, ReadableTable, ReadableTableMetadata, TableDefinition, WriteTransaction};
+use redb::{
+    Database, ReadTransaction, ReadableTable, ReadableTableMetadata, TableDefinition,
+    WriteTransaction,
+};
 
 use crate::model::{decode_u48, encode_u48, InfoHash, TorrentEntry};
 use crate::Error;
@@ -105,26 +108,46 @@ fn decode_entry_raw(data: &[u8]) -> Result<TorrentEntry, Error> {
     };
 
     let name = String::from_utf8_lossy(name_bytes).into_owned();
-    Ok(TorrentEntry { name, size, discovered_at, files })
+    Ok(TorrentEntry {
+        name,
+        size,
+        discovered_at,
+        files,
+    })
 }
 
 fn decode_files(data: &[u8]) -> Vec<crate::model::FileInfo> {
-    if data.len() < 2 { return Vec::new(); }
+    if data.len() < 2 {
+        return Vec::new();
+    }
     let count = u16::from_be_bytes([data[0], data[1]]) as usize;
     let mut files = Vec::with_capacity(count);
     let mut pos = 2;
     for _ in 0..count {
-        if pos + 10 > data.len() { break; }
+        if pos + 10 > data.len() {
+            break;
+        }
         let file_size = u64::from_be_bytes([
-            data[pos], data[pos+1], data[pos+2], data[pos+3],
-            data[pos+4], data[pos+5], data[pos+6], data[pos+7],
+            data[pos],
+            data[pos + 1],
+            data[pos + 2],
+            data[pos + 3],
+            data[pos + 4],
+            data[pos + 5],
+            data[pos + 6],
+            data[pos + 7],
         ]);
-        let path_len = u16::from_be_bytes([data[pos+8], data[pos+9]]) as usize;
+        let path_len = u16::from_be_bytes([data[pos + 8], data[pos + 9]]) as usize;
         pos += 10;
-        if pos + path_len > data.len() { break; }
+        if pos + path_len > data.len() {
+            break;
+        }
         let path = String::from_utf8_lossy(&data[pos..pos + path_len]).into_owned();
         pos += path_len;
-        files.push(crate::model::FileInfo { path, size: file_size });
+        files.push(crate::model::FileInfo {
+            path,
+            size: file_size,
+        });
     }
     files
 }
@@ -198,11 +221,7 @@ pub fn get_entry(
 }
 
 /// Iterate entries from a given timestamp (inclusive). For sync protocol use.
-pub fn entries_since<F>(
-    rtx: &ReadTransaction,
-    since: u32,
-    mut f: F,
-) -> Result<(), Error>
+pub fn entries_since<F>(rtx: &ReadTransaction, since: u32, mut f: F) -> Result<(), Error>
 where
     F: FnMut(InfoHash, TorrentEntry) -> bool,
 {
@@ -213,11 +232,7 @@ where
 /// Iterate entries after a given cursor (timestamp + infohash), yielding (infohash, entry).
 /// Calls the provided closure for each entry. Stops if the closure returns false.
 /// Use `[0u8; 24]` as cursor to start from the beginning.
-pub fn entries_after<F>(
-    rtx: &ReadTransaction,
-    cursor: &[u8; 24],
-    mut f: F,
-) -> Result<(), Error>
+pub fn entries_after<F>(rtx: &ReadTransaction, cursor: &[u8; 24], mut f: F) -> Result<(), Error>
 where
     F: FnMut(InfoHash, TorrentEntry, [u8; 24]) -> bool,
 {
@@ -277,12 +292,7 @@ pub fn latest_timestamp(rtx: &ReadTransaction) -> Result<u32, Error> {
     let result = match ti.last()? {
         Some((key, _)) => {
             let key_bytes = key.value();
-            u32::from_be_bytes([
-                key_bytes[0],
-                key_bytes[1],
-                key_bytes[2],
-                key_bytes[3],
-            ])
+            u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]])
         }
         None => 0,
     };
@@ -314,7 +324,8 @@ pub fn recent_entries(
         infohash.copy_from_slice(&key_bytes[4..24]);
 
         if let Some(filter) = cat_filter {
-            let entry_cat = cats.as_ref()
+            let entry_cat = cats
+                .as_ref()
                 .and_then(|t| t.get(&infohash).ok().flatten())
                 .map(|v| v.value())
                 .unwrap_or(crate::model::Category::Other as u8);

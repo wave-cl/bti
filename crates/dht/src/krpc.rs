@@ -83,10 +83,7 @@ impl Server {
                 }
             };
 
-            let recv_msg = RecvMsg {
-                msg: parsed,
-                from,
-            };
+            let recv_msg = RecvMsg { msg: parsed, from };
 
             if recv_msg.msg.y == msg::Y_QUERY {
                 let resp = responder.clone();
@@ -127,8 +124,12 @@ impl Server {
                 }
             }
             Err(e) => {
-                debug!("responder error for {} from {}: {}",
-                    recv_msg.msg.q.as_deref().unwrap_or("?"), from, e);
+                debug!(
+                    "responder error for {} from {}: {}",
+                    recv_msg.msg.q.as_deref().unwrap_or("?"),
+                    from,
+                    e
+                );
                 let response = msg::encode_error(&tx_id, 202, &e.to_string());
                 let _ = conn.send_to(&response, from).await;
             }
@@ -150,7 +151,10 @@ impl Server {
             queries.insert(tx_id.clone(), tx);
         }
 
-        self.conn.send_to(&encoded, addr).await.map_err(QueryError::Io)?;
+        self.conn
+            .send_to(&encoded, addr)
+            .await
+            .map_err(QueryError::Io)?;
 
         let result = tokio::time::timeout(self.query_timeout, rx).await;
 

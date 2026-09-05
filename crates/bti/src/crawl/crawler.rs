@@ -105,8 +105,7 @@ pub async fn run_crawler(
             }
         });
 
-    let server =
-        Server::start(config.dht_port, responder, Some(on_node_discovered)).await?;
+    let server = Server::start(config.dht_port, responder, Some(on_node_discovered)).await?;
     info!("DHT server started on {}", server.local_addr());
 
     let client = Arc::new(DhtClient::new(node_id, server.clone()));
@@ -115,7 +114,10 @@ pub async fn run_crawler(
     // Bootstrap
     info!("bootstrapping DHT...");
     bootstrap(&client, &ktable, &config.bootstrap_nodes).await;
-    info!("bootstrap complete, {} nodes in routing table", ktable.node_count());
+    info!(
+        "bootstrap complete, {} nodes in routing table",
+        ktable.node_count()
+    );
 
     // --- Stats logger (every 30s) ---
     let stats_ref = stats.clone();
@@ -322,10 +324,12 @@ pub async fn run_crawler(
 
                         for hash in result.samples {
                             stats.infohashes_found.fetch_add(1, Ordering::Relaxed);
-                            let _ = tx.send(TriageItem {
-                                infohash: hash,
-                                peer: addr,
-                            }).await;
+                            let _ = tx
+                                .send(TriageItem {
+                                    infohash: hash,
+                                    peer: addr,
+                                })
+                                .await;
                         }
                         for n in result.nodes {
                             kt.put_node(n.id, n.addr, false);
@@ -457,19 +461,31 @@ pub async fn run_crawler(
                     match fetcher.fetch(item.infohash, p).await {
                         Ok(result) => {
                             stats.meta_success.fetch_add(1, Ordering::Relaxed);
-                            let files = result.files.into_iter()
-                                .map(|f| bti_core::model::FileInfo { path: f.path, size: f.size })
+                            let files = result
+                                .files
+                                .into_iter()
+                                .map(|f| bti_core::model::FileInfo {
+                                    path: f.path,
+                                    size: f.size,
+                                })
                                 .collect();
-                            let _ = tx.send(MetaResult {
-                                infohash: item.infohash,
-                                name: result.name,
-                                size: result.size,
-                                files,
-                            }).await;
+                            let _ = tx
+                                .send(MetaResult {
+                                    infohash: item.infohash,
+                                    name: result.name,
+                                    size: result.size,
+                                    files,
+                                })
+                                .await;
                             return;
                         }
                         Err(e) => {
-                            trace!("meta fetch {} from {} failed: {}", hex::encode(&item.infohash[..6]), p, e);
+                            trace!(
+                                "meta fetch {} from {} failed: {}",
+                                hex::encode(&item.infohash[..6]),
+                                p,
+                                e
+                            );
                             continue;
                         }
                     }
@@ -543,11 +559,7 @@ fn persist_batch(db: &Database, batch: &mut Vec<MetaResult>, stats: &CrawlerStat
     }
 }
 
-async fn bootstrap(
-    client: &Arc<DhtClient>,
-    ktable: &KTable,
-    bootstrap_nodes: &[String],
-) {
+async fn bootstrap(client: &Arc<DhtClient>, ktable: &KTable, bootstrap_nodes: &[String]) {
     for node in bootstrap_nodes {
         let addrs: Vec<SocketAddr> = match node.to_socket_addrs() {
             Ok(a) => a.collect(),
@@ -581,9 +593,7 @@ async fn bootstrap(
             let c = Arc::clone(client);
             let addr = SocketAddr::V4(node.addr);
             let t = target;
-            handles.push(tokio::spawn(async move {
-                c.find_node(addr, t).await
-            }));
+            handles.push(tokio::spawn(async move { c.find_node(addr, t).await }));
         }
         for handle in handles {
             if let Ok(Ok(result)) = handle.await {
@@ -593,7 +603,11 @@ async fn bootstrap(
             }
         }
         if ktable.node_count() > 50 {
-            info!("bootstrap early exit at round {} with {} nodes", round + 1, ktable.node_count());
+            info!(
+                "bootstrap early exit at round {} with {} nodes",
+                round + 1,
+                ktable.node_count()
+            );
             break;
         }
     }
@@ -603,7 +617,10 @@ fn raise_fd_limit() {
     #[cfg(unix)]
     {
         use std::io;
-        let mut rlim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        let mut rlim = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
         unsafe {
             if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim) == 0 {
                 let target = rlim.rlim_max.min(65536);

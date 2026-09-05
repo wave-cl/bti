@@ -106,7 +106,10 @@ struct StatsResponse {
 }
 
 async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>, StatusCode> {
-    let rtx = state.db.begin_read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rtx = state
+        .db
+        .begin_read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let total = storage::count(&rtx).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -124,20 +127,57 @@ async fn api_stats(State(state): State<AppState>) -> Result<Json<StatsResponse>,
     }
 
     let sync = state.sync_info.as_ref().map(|label| {
-        let state_str = match state.sync_status.as_ref().map(|s| s.load(Ordering::Relaxed)) {
+        let state_str = match state
+            .sync_status
+            .as_ref()
+            .map(|s| s.load(Ordering::Relaxed))
+        {
             Some(2) => "connected",
             Some(3) => "disconnected",
             _ => "connecting",
         };
-        let crawler_db_size = state.crawler_db_size.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
-        let crawler_total = state.crawler_total.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
-        let crawler_mem_rss = state.crawler_mem_rss.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
-        let crawler_disk_used = state.crawler_disk_used.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
-        let crawler_disk_total = state.crawler_disk_total.as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(0);
-        SyncInfo { label: label.clone(), state: state_str.to_string(), crawler_db_size, crawler_total, crawler_mem_rss, crawler_disk_used, crawler_disk_total }
+        let crawler_db_size = state
+            .crawler_db_size
+            .as_ref()
+            .map(|a| a.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        let crawler_total = state
+            .crawler_total
+            .as_ref()
+            .map(|a| a.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        let crawler_mem_rss = state
+            .crawler_mem_rss
+            .as_ref()
+            .map(|a| a.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        let crawler_disk_used = state
+            .crawler_disk_used
+            .as_ref()
+            .map(|a| a.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        let crawler_disk_total = state
+            .crawler_disk_total
+            .as_ref()
+            .map(|a| a.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        SyncInfo {
+            label: label.clone(),
+            state: state_str.to_string(),
+            crawler_db_size,
+            crawler_total,
+            crawler_mem_rss,
+            crawler_disk_used,
+            crawler_disk_total,
+        }
     });
 
-    Ok(Json(StatsResponse { total, db_size, categories, sync }))
+    Ok(Json(StatsResponse {
+        total,
+        db_size,
+        categories,
+        sync,
+    }))
 }
 
 #[derive(serde::Deserialize)]
@@ -174,11 +214,17 @@ async fn api_recent(
     State(state): State<AppState>,
     Query(params): Query<RecentQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let rtx = state.db.begin_read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rtx = state
+        .db
+        .begin_read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let cats = rtx.open_table(storage::CATEGORIES).ok();
 
     let cat_filter = params.category.as_ref().and_then(|c| {
-        Category::ALL.iter().find(|cat| cat.as_str() == c.as_str()).copied()
+        Category::ALL
+            .iter()
+            .find(|cat| cat.as_str() == c.as_str())
+            .copied()
     });
 
     let cat_filter_u8 = cat_filter.map(|c| c as u8);
@@ -195,7 +241,14 @@ async fn api_recent(
                 .map(|v| Category::from_u8(v.value()))
                 .unwrap_or(Category::Other);
             let ts = entry.unix_timestamp();
-            let files = entry.files.into_iter().map(|f| FileResult { path: f.path, size: f.size }).collect();
+            let files = entry
+                .files
+                .into_iter()
+                .map(|f| FileResult {
+                    path: f.path,
+                    size: f.size,
+                })
+                .collect();
             SearchResult {
                 infohash: hex::encode(ih),
                 name: entry.name,
@@ -217,7 +270,10 @@ async fn api_search(
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = params.offset.unwrap_or(0);
 
-    let rtx = state.db.begin_read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rtx = state
+        .db
+        .begin_read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let tokens = params
         .q
@@ -281,12 +337,13 @@ async fn api_search(
 
     // Filter by category if specified
     let cat_filter = params.category.as_ref().and_then(|c| {
-        Category::ALL.iter().find(|cat| cat.as_str() == c.as_str()).copied()
+        Category::ALL
+            .iter()
+            .find(|cat| cat.as_str() == c.as_str())
+            .copied()
     });
 
-    let torrents = rtx
-        .open_table(storage::CATEGORIES)
-        .ok();
+    let torrents = rtx.open_table(storage::CATEGORIES).ok();
 
     let mut results = Vec::new();
     let mut skipped = 0;
@@ -319,7 +376,14 @@ async fn api_search(
                 .unwrap_or(Category::Other);
 
             let ts = entry.unix_timestamp();
-            let files = entry.files.into_iter().map(|f| FileResult { path: f.path, size: f.size }).collect();
+            let files = entry
+                .files
+                .into_iter()
+                .map(|f| FileResult {
+                    path: f.path,
+                    size: f.size,
+                })
+                .collect();
             results.push(SearchResult {
                 infohash: hex::encode(ih),
                 name: entry.name,
@@ -345,7 +409,10 @@ async fn api_torrent(
     let mut ih = [0u8; 20];
     ih.copy_from_slice(&bytes);
 
-    let rtx = state.db.begin_read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rtx = state
+        .db
+        .begin_read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let entry = storage::get_entry(&rtx, &ih)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -359,7 +426,14 @@ async fn api_torrent(
         .unwrap_or(Category::Other);
 
     let ts = entry.unix_timestamp();
-    let files = entry.files.into_iter().map(|f| FileResult { path: f.path, size: f.size }).collect();
+    let files = entry
+        .files
+        .into_iter()
+        .map(|f| FileResult {
+            path: f.path,
+            size: f.size,
+        })
+        .collect();
     Ok(Json(SearchResult {
         infohash: infohash_hex,
         name: entry.name,

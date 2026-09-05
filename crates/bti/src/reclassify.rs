@@ -123,9 +123,32 @@ fn tokenize(name: &str) -> Vec<String> {
 fn is_stopword(word: &str) -> bool {
     matches!(
         word,
-        "the" | "and" | "for" | "are" | "but" | "not" | "you" | "all" | "can" | "had"
-            | "her" | "was" | "one" | "our" | "out" | "has" | "have" | "from" | "with"
-            | "this" | "that" | "what" | "www" | "com" | "org" | "net"
+        "the"
+            | "and"
+            | "for"
+            | "are"
+            | "but"
+            | "not"
+            | "you"
+            | "all"
+            | "can"
+            | "had"
+            | "her"
+            | "was"
+            | "one"
+            | "our"
+            | "out"
+            | "has"
+            | "have"
+            | "from"
+            | "with"
+            | "this"
+            | "that"
+            | "what"
+            | "www"
+            | "com"
+            | "org"
+            | "net"
     )
 }
 

@@ -25,7 +25,12 @@ impl TorrentEntry {
 
     pub fn from_unix(name: String, size: u64, unix_secs: u64, files: Vec<FileInfo>) -> Self {
         let discovered_at = (unix_secs.saturating_sub(EPOCH_OFFSET)) as u32;
-        Self { name, size, discovered_at, files }
+        Self {
+            name,
+            size,
+            discovered_at,
+            files,
+        }
     }
 }
 
@@ -37,7 +42,9 @@ pub fn encode_u48(val: u64) -> [u8; 6] {
 
 /// Decode 6-byte big-endian (u48) to u64.
 pub fn decode_u48(bytes: &[u8; 6]) -> u64 {
-    u64::from_be_bytes([0, 0, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]])
+    u64::from_be_bytes([
+        0, 0, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+    ])
 }
 
 #[repr(u8)]

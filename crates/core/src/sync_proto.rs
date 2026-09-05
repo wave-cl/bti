@@ -42,10 +42,10 @@ pub async fn read_sync_header(recv: &mut RecvStream) -> Result<SyncHeader, Error
     let mut buf = [0u8; 40];
     recv.read_exact(&mut buf).await?;
     Ok(SyncHeader {
-        db_size:    u64::from_be_bytes(buf[0..8].try_into().unwrap()),
-        total:      u64::from_be_bytes(buf[8..16].try_into().unwrap()),
-        mem_rss:    u64::from_be_bytes(buf[16..24].try_into().unwrap()),
-        disk_used:  u64::from_be_bytes(buf[24..32].try_into().unwrap()),
+        db_size: u64::from_be_bytes(buf[0..8].try_into().unwrap()),
+        total: u64::from_be_bytes(buf[8..16].try_into().unwrap()),
+        mem_rss: u64::from_be_bytes(buf[16..24].try_into().unwrap()),
+        disk_used: u64::from_be_bytes(buf[24..32].try_into().unwrap()),
         disk_total: u64::from_be_bytes(buf[32..40].try_into().unwrap()),
     })
 }
@@ -107,8 +107,7 @@ pub async fn read_sync_entry(
 
     let mut infohash = [0u8; 20];
     infohash.copy_from_slice(&header[..20]);
-    let discovered_at =
-        u32::from_be_bytes([header[20], header[21], header[22], header[23]]);
+    let discovered_at = u32::from_be_bytes([header[20], header[21], header[22], header[23]]);
     let size = decode_u48(&[
         header[24], header[25], header[26], header[27], header[28], header[29],
     ]);
@@ -125,7 +124,9 @@ pub async fn read_sync_entry(
     for _ in 0..file_count {
         let mut fhdr = [0u8; 10]; // 8B size + 2B path_len
         recv.read_exact(&mut fhdr).await?;
-        let fsize = u64::from_be_bytes([fhdr[0],fhdr[1],fhdr[2],fhdr[3],fhdr[4],fhdr[5],fhdr[6],fhdr[7]]);
+        let fsize = u64::from_be_bytes([
+            fhdr[0], fhdr[1], fhdr[2], fhdr[3], fhdr[4], fhdr[5], fhdr[6], fhdr[7],
+        ]);
         let path_len = u16::from_be_bytes([fhdr[8], fhdr[9]]) as usize;
         let mut path_buf = vec![0u8; path_len];
         recv.read_exact(&mut path_buf).await?;
@@ -137,6 +138,11 @@ pub async fn read_sync_entry(
 
     Ok(Some((
         infohash,
-        TorrentEntry { name, size, discovered_at, files },
+        TorrentEntry {
+            name,
+            size,
+            discovered_at,
+            files,
+        },
     )))
 }

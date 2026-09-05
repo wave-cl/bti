@@ -5,7 +5,10 @@ use crate::ktable::KTable;
 use crate::msg::{self, EncodeReturn, NodeInfo, RecvMsg};
 
 pub trait Responder: Send + Sync {
-    fn respond(&self, msg: &RecvMsg) -> Result<EncodeReturn, Box<dyn std::error::Error + Send + Sync>>;
+    fn respond(
+        &self,
+        msg: &RecvMsg,
+    ) -> Result<EncodeReturn, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 /// Default DHT responder that handles standard KRPC queries.
@@ -69,11 +72,7 @@ impl DhtResponder {
         }
     }
 
-    fn handle_announce_peer(
-        &self,
-        info_hash: &[u8; 20],
-        peer: SocketAddr,
-    ) -> EncodeReturn {
+    fn handle_announce_peer(&self, info_hash: &[u8; 20], peer: SocketAddr) -> EncodeReturn {
         self.ktable.put_hash(*info_hash, vec![peer]);
         EncodeReturn {
             id: self.node_id,
@@ -111,17 +110,9 @@ impl Responder for DhtResponder {
         &self,
         recv_msg: &RecvMsg,
     ) -> Result<EncodeReturn, Box<dyn std::error::Error + Send + Sync>> {
-        let method = recv_msg
-            .msg
-            .q
-            .as_deref()
-            .ok_or("missing query method")?;
+        let method = recv_msg.msg.q.as_deref().ok_or("missing query method")?;
 
-        let args = recv_msg
-            .msg
-            .a
-            .as_ref()
-            .ok_or("missing query arguments")?;
+        let args = recv_msg.msg.a.as_ref().ok_or("missing query arguments")?;
 
         match method {
             msg::Q_PING => Ok(self.handle_ping()),

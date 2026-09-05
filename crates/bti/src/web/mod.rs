@@ -1,6 +1,6 @@
+pub mod search;
 pub mod server;
 pub mod sync_child;
-pub mod search;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

@@ -46,10 +46,15 @@ async fn sync_once(
         bti_core::storage::latest_timestamp(&rtx)?
     };
 
-    let conn = squic::dial(crawler_addr, crawler_key, squic::Config {
-        keep_alive: Some(Duration::from_secs(10)),
-        ..Default::default()
-    }).await?;
+    let conn = squic::dial(
+        crawler_addr,
+        crawler_key,
+        squic::Config {
+            keep_alive: Some(Duration::from_secs(10)),
+            ..Default::default()
+        },
+    )
+    .await?;
     let (mut send, mut recv) = conn.open_bi().await?;
     status.store(STATUS_CONNECTED, Ordering::Relaxed);
 
