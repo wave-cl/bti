@@ -3,3 +3,4 @@ target/
 export.log
 tools/export-btmcp/export-btmcp
 .DS_Store
+compose.yaml
