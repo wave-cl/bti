@@ -150,9 +150,7 @@ impl Server {
             queries.insert(tx_id.clone(), tx);
         }
 
-        self.conn.send_to(&encoded, addr).await.map_err(|e| {
-            QueryError::Io(e)
-        })?;
+        self.conn.send_to(&encoded, addr).await.map_err(QueryError::Io)?;
 
         let result = tokio::time::timeout(self.query_timeout, rx).await;
 

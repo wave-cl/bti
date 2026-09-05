@@ -171,9 +171,7 @@ async fn ex_handshake(stream: &mut TcpStream) -> Result<(u32, u8), FetchError> {
         })?;
     let ut_metadata = m
         .get("ut_metadata")
-        .and_then(|v| {
-            crate::msg::value_to_i64(v)
-        })
+        .and_then(crate::msg::value_to_i64)
         .ok_or_else(|| {
             trace!("ut_metadata lookup failed. m keys: {:?}, raw get: {:?}",
                 m.as_dict().map(|d| d.keys().map(|k| String::from_utf8_lossy(k.as_slice()).to_string()).collect::<Vec<_>>()),
