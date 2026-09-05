@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  # Runners have been unavailable before in this estate: a push produced no run
+  # at all, and a retry concluded "success" having executed zero jobs — a green
+  # tick that meant nothing had been compiled. Without a manual trigger there is
+  # no way to ask for a real run short of pushing a fresh commit.
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # bti depends on squic by **path**, at `../squic-rust`, so the sibling
+      # has to exist before anything compiles. Same clone as `release.yml`.
+      #
+      # Worth knowing when this job fails: the clone follows squic-rust's
+      # default branch rather than the version in `Cargo.lock`, so a red tick
+      # here can mean squic-rust moved rather than that bti changed. The lock
+      # records a version; a path dependency does not honour it.
+      - name: Checkout squic-rust
+        run: git clone --depth 1 https://github.com/wave-cl/squic-rust.git ../squic-rust
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # ring and redb build from source, so an uncached run is slow enough to
+      # discourage anyone from waiting on it.
+      - uses: Swatinem/rust-cache@v2
+
+      # `--all-targets` so tests and examples are linted too, and `-D warnings`
+      # because a warning nobody has to act on is a warning that accumulates:
+      # this repo had 40 of them across four crates when the job was added,
+      # surfacing in waves as each crate started compiling again.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+# There is deliberately no `cargo fmt --check` job. This repository is not
+# rustfmt-clean, so one would fail on arrival, and reformatting it is a separate
+# decision with a diff of its own — not something to smuggle in with a lint job.
+#
+# There is deliberately no `cargo test` job either. bti has no tests, so one
+# would report "0 passed" and a green tick, which is worse than an absent job:
+# it looks like coverage. Add the job with the first test, not before it.
